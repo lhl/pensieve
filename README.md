@@ -1,44 +1,61 @@
 pensieve
 ========
 
-Personal Notebook/Wiki Project
+Pensieve is a personal notebook/wiki.
+
+It exists mainly because I wanted a wiki that had inline editing.
+
+
+Features
+--------
+* Inline WYSIWYG Editing
+* Drag and Drop File Attachments
+* Automatic Nav/TOC
+  * Tagging
+* Comments
+* Annotations
+* Search & Create
+* Track Changes/History
+* Logins/Authorship Tracking
+* Permissions
+  * Visibility
+  * Editing
+* Running locally/offline and syncing as well as online
 
 
 Dependencies
 ------------
 
+Server-side
 Python 2.7
-Tornadow
+Tornado
 Whoosh
 
+JavaScript
+* http://jquery.com/
+* http://www.dropzonejs.com/
+* Aloha Editor
 
-Features
---------
-* In-line WYSIWYG
-* Drag and Drop File Attachments
-* Automatic Nav/TOC
-* Search
-* Track Changes/History
 
-* Automatically track history
-
-Roadmap/Requirements
--------
+Dev Roadmap
+-----------
+Stored in pensieve
 
 Note Storage
 * Gollum-compatible git storage
 * Git Backend
+* JSON metadata storage
 
-Tags
-* http://code.drewwilson.com/entry/autosuggest-jquery-plugin
 
-Editing
-* Inline editing
-* Track Changes
-  * http://nytimes.github.com/ice/demo/
+Similar Projects
+----------------
+http://www.document.ly/ - Startup Service; Uses Markdown
+https://hackpad.com/ - Startup Service; Etherpad-based; Rich Text
 
-User
-* FB Auth
 
-Search
-* Whoosh
+License
+-------
+This code is licensed under the GPLv3 or later.
+
+Included code:
+* Aloha Editor
