@@ -11,13 +11,22 @@
 	<script src="/js/alohaeditor/aloha/lib/aloha.js" data-aloha-plugins="common/ui,common/format,common/highlighteditables,common/link"></script>
 </head>
 <body>
+  <h1>Pensieve Proof of Concept</h1>
 	<div id="main">
-		<div id="content"><p>Getting started with Aloha Editor!</p></div>
+    <div id="content">{% raw content %}</div>
 	</div>
 	<script type="text/javascript">
+  // Initialize
 	Aloha.ready( function() {
 		Aloha.jQuery('#content').aloha();
 	});
+
+  // Saving
+  Aloha.bind('aloha-editable-deactivated', function (e, params) {
+    if(params.editable.originalContent != params.editable.obj[0].innerHTML) {
+      $.post(location.href, {content: params.editable.obj[0].innerHTML})
+    }
+  });
 	</script>
 </body>
 </html>

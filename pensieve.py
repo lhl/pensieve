@@ -30,15 +30,18 @@ class MainHandler(tornado.web.RequestHandler):
   def get(self):
     # Template
     d = time.strftime('%Y-%m-%d %I:%M:%S %p')
-    self.render('main.html', d=d)
+    try:
+      content = open(os.path.join(os.path.dirname(__file__), 'save.html')).read()
+    except:
+      content = 'EMPTY!<hr><br>'
+    self.render('main.html', d=d, content=content)
 
   def post(self):
-    # side = self.get_argument('side', None)
-
-    # type - Color, Gray, Lineart
-    type = self.get_argument('type', 'Color')
-    subprocess.call(['osascript', '-e', 'tell application "ExactScan Pro"', '-e', 'set document type to "%s"' % type, '-e', 'end tell'])
-
+    content = self.get_argument('content', None)
+    print content
+    if content != None:
+      dest = os.path.join(os.path.dirname(__file__), 'save.html') 
+      open(dest, 'w').write(content)
 
 if __name__ == '__main__':
   Application().listen(PORT)
