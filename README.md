@@ -1,6 +1,5 @@
 pensieve
 ========
-
 Pensieve is a personal notebook/wiki.
 
 It exists mainly because I wanted a wiki that had inline editing.
@@ -9,12 +8,13 @@ It exists mainly because I wanted a wiki that had inline editing.
 Features
 --------
 x Inline WYSIWYG Editing
-* Drag and Drop File Attachments
-  * Upload
-  * Linking
 * Automatic Nav/TOC
   * Tagging - multiple hierarchy
   * Load Children in view (transclude)
+* Drag and Drop File Attachments
+  * Upload
+  * Linking
+* Privacy
 * Comments
 * Annotations
 * Search & Create
@@ -35,16 +35,6 @@ V2
 
 Dependencies
 ------------
-
-Server-side
-Python 2.7
-Tornado
-Whoosh
-
-JavaScript
-* http://jquery.com/
-* http://www.dropzonejs.com/
-* Aloha Editor
 
 
 Dev Roadmap
@@ -72,13 +62,41 @@ Gitit - http://gitit.net
 
 Similar Projects
 ----------------
-http://www.document.ly/ - Startup Service; Uses Markdown
-https://hackpad.com/ - Startup Service; Etherpad-based; Rich Text
+http://tiddlywiki.com/
++ Interesting dynamic loading
++ Pulls references
++ node-webkit: http://tiddlywiki.com/static/TiddlyWiki%2520on%2520node-webkit.html
+- Not inline editing / WYSIWYG
+- saves everything to a single file
+- Nav sorta wonky
+
+https://hackpad.com/ 
++ Etherpad-like editing
++ Lots of interesting Text processing
+- Service only
+- Not offline
+- No Tables/Grids
+- Nav sucks ass
+- Emails forever
+- See also: https://hackpad.com/mwN5#Hackpad-Improvement-Requests
+
+http://scribbleton.com/
+- No sync
+- Offline only
+- No Keyboard shortcuts
+- Closed source
+- No nav
+
+Evernote
++ Offline
++ Easy inputs
+- bad nav/org
+- really bad sharing
+- no internal linking
 
 
 License
 -------
-This code is licensed under the GPLv3 or later.
+This code is licensed under the GPLv2 or later, with the following exceptions:
 
-Included code:
-* Aloha Editor
+* Froala Editor is included for convenience and is licensed via a [Non Commercial License](http://editor.froala.com/faq). Any commercial use will require you to purchase an appropriate license.
