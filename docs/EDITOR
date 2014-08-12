@@ -1,3 +1,13 @@
+v1: Use Froala
+
+v2: Switch to medium-editor
+* http://orthes.github.io/medium-editor-insert-plugin/
+  * Insertion of Videos
+  * Embeds
+  * Grid: http://handsontable.com/
+* integrate pen markdown conversion: https://github.com/sofish/pen/tree/master/src
+
+
 Features Desired
 ===
 * Inline HTML editing
@@ -24,8 +34,9 @@ https://github.com/froala/wysiwyg-editor
 + Great floating mode
 + Good table editor
 + Image uploads
-+ Good API
++ Decent API/docs
 - Non-commercial license
+- no public support, users http://stackoverflow.com/questions/tagged/froala
 
 Redactor
 http://imperavi.com/redactor/
@@ -53,6 +64,7 @@ Raptor
 https://www.raptor-editor.com/
 x No floating bar
 - sort of heavy
++ GPLv3 license
 
 
 Interesting
@@ -60,15 +72,37 @@ Interesting
 
 ZenPen
 http://www.zenpen.io
+https://github.com/tholman/zenpen
 + Awesome full screen/dark mode design
 + beautiful inline toolbar
 
 Medium Editor Clone
 http://daviferreira.github.io/medium-editor/
+https://github.com/daviferreira/medium-editor
+https://stillhart.biz/project/MediumButton/
+https://github.com/timdown/rangy
+http://orthes.github.io/medium-editor-insert-plugin/
+
+Medium Editor + Markdown
+https://github.com/sofish/pen
+
+https://github.com/jakiestfu/Medium.js/
+
+https://github.com/mduvall/grande.js
+
+https://github.com/raphaelcruzeiro/jquery-notebook
+
 
 Sir Trevor
 http://madebymany.github.io/sir-trevor-js/
 + Interesting "post" type sections
+
+
+Grids
+===
+Maybe instead of inline tables, allow a separate grid element...
+
+http://handsontable.com/
 
 
 Other
@@ -94,6 +128,10 @@ x table editing is wack
 - heavy
 - not floating
 - attached to Rails
+
+Trumbowyg
+http://alex-d.github.io/Trumbowyg/
+x no tables
 
 
 Reference
