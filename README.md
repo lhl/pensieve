@@ -8,10 +8,13 @@ It exists mainly because I wanted a wiki that had inline editing.
 
 Features
 --------
-* Inline WYSIWYG Editing
+x Inline WYSIWYG Editing
 * Drag and Drop File Attachments
+  * Upload
+  * Linking
 * Automatic Nav/TOC
-  * Tagging
+  * Tagging - multiple hierarchy
+  * Load Children in view (transclude)
 * Comments
 * Annotations
 * Search & Create
@@ -21,6 +24,13 @@ Features
   * Visibility
   * Editing
 * Running locally/offline and syncing as well as online
+
+V2
+--
+* Install Script
+* Full Auth, User System, Permissions/ownership
+* Private and Public Repos, Multiple Repos
+  * Private - move into private repo and splice?
 
 
 Dependencies
@@ -45,6 +55,19 @@ Note Storage
 * Gollum-compatible git storage
 * Git Backend
 * JSON metadata storage
+
+
+Existing Git-backed Wikis
+-------------------------
+Gollum
+http://jgoodall.me/posts/2012/11/14/git-backed-wiki/
+http://www.nomachetejuggling.com/2012/05/15/personal-wiki-using-github-and-gollum-on-os-x/
+
+Sparkleshare - http://sparkleshare.org
+WiGit - http://el-tramo.be/wigit/
+git-wiki - http://atonie.org/2008/02/git-wiki
+Smug - http://www.mcnabbs.org/andrew/smug/
+Gitit - http://gitit.net
 
 
 Similar Projects
