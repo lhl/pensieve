@@ -1,30 +1,117 @@
+Features Desired
+===
 * Inline HTML editing
+  * H2
+  * H3
+  * B
+  * I
+  * U
+  * Link
+  * Tables
+  * Images
 * Macros/Transforms
+  * API Hooks while typing
+* Keyboard shortcuts, customization
+* Floating Menu
 
 
-http://quilljs.com/
+Top Contenders
+===
 
-vs
+Froala Editor
+http://editor.froala.com
+https://github.com/froala/wysiwyg-editor 
++ Great floating mode
++ Good table editor
++ Image uploads
++ Good API
+- Non-commercial license
 
+Redactor
+http://imperavi.com/redactor/
+x Air Mode (floating) doesn't include most features
+x Licensing is weird/really expensive
++ Great table editor
++ Great docs/API http://imperavi.com/redactor/docs/
+
+Aloha Editor
+http://aloha-editor.org
++ Pretty good table editing
+* OK floating mode
+- overly complex
+- sorta ugly
++ GPLv2 license
+
+CKEditor
+http://ckeditor.com
+https://github.com/ckeditor/ckeditor-dev
+* v4 has a floating mode
+- ugly
++ GPL/LGPL/MPL license
+
+Raptor
 https://www.raptor-editor.com/
+x No floating bar
+- sort of heavy
 
 
+Interesting
+===
+
+ZenPen
+http://www.zenpen.io
++ Awesome full screen/dark mode design
++ beautiful inline toolbar
+
+Medium Editor Clone
+http://daviferreira.github.io/medium-editor/
+
+Sir Trevor
+http://madebymany.github.io/sir-trevor-js/
++ Interesting "post" type sections
 
 
-Collaborative Editing:
+Other
+===
+
+Snap Editor
+http://www.snapeditor.com/
+https://github.com/tonibergholm/SnapEditor
++ Pretty good!
++ Sweet animation
+- source code attached to other stuff?
+- company out of business
+- Never to be done: http://www.snapeditor.com/whats_coming
+
+Quill
+http://quilljs.com/
+x no tables
+- company out of business
+
+Mercury Editor
+http://jejacks0n.github.io/mercury/
+x table editing is wack
+- heavy
+- not floating
+- attached to Rails
+
+
+Reference
+===
+https://news.layervault.com/stories/5739-a-better-looking-rich-text-entry-method-than-tinymce-or-ckeditor-as-seen-on-medium-with-available-solutions-to-use
+http://bashooka.com/coding/best-wysiwyg-editors/
+
+
+Collaborative Editing
+===
 http://www.codecommit.com/blog/java/understanding-and-applying-operational-transformation
 https://github.com/ottypes/docs
 https://github.com/share/ShareJS/issues/1
 https://code.google.com/p/google-mobwrite/
 https://www.npmjs.org/package/share-wisdom
 
-
-
-Reference:
 http://en.wikipedia.org/wiki/Collaborative_real-time_editor
 
-
-See also:
 http://etherpad.org/
 http://www.firepad.io/
 http://enterprise.xwiki.org/xwiki/bin/view/Main/Features
