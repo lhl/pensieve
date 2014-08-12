@@ -1,0 +1,13 @@
+{
+  "name": "Pensieve",
+  "version": "0.0.1",
+  "description": "Personal Notebook.",
+  "main": "main.html",
+  "window": {
+    "width": 800,
+    "height": 600,
+    "show": false,
+    "title": "Pensieve",
+    "toolbar": true
+  }
+}
