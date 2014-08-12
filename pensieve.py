@@ -7,22 +7,27 @@ import sys
 import tornado.ioloop
 import tornado.web
 
+
 import handlers
 
-PORT = 1223
 
-logging.basicConfig(filename='/lensley/hype/print.log',
-                                        level=logging.DEBUG,
-                                        format = '%(asctime)s : %(levelname)s : %(message)s',
-                                        datefmt = '%Y-%m-%d %H:%M:%S'
-                                       )
+PORT = 1223
+HOME = os.path.dirname(os.path.abspath(__file__))
+
 
 # LOGGING 
-
+logging.basicConfig(filename='%s/pensieve.log' % HOME,
+                    level=logging.INFO,
+                    format = '%(asctime)s : %(levelname)s : %(message)s',
+                    datefmt = '%Y-%m-%d %H:%M:%S'
+                   )
 if sys.stdout.isatty():
-  debug = 1
-else:
-  debug = 0
+  console = logging.StreamHandler()
+  console.setLevel(logging.DEBUG)
+  formatter = logging.Formatter('%(asctime)s : %(levelname)-8s : %(message)s')
+  console.setFormatter(formatter)
+  logging.getLogger('').addHandler(console)
+
 
 class Application(tornado.web.Application):
   def __init__(self):
@@ -59,7 +64,6 @@ class MainHandler(tornado.web.RequestHandler):
       open(dest, 'w').write(content)
 
 if __name__ == '__main__':
-  if debug:
-    print "Starting on locahost:%s" % PORT
+  logging.info("Starting on locahost:%s" % PORT)
   Application().listen(PORT)
   tornado.ioloop.IOLoop.instance().start()
