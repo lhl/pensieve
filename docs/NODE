@@ -1,0 +1,37 @@
+# Install for cmdline dev
+# https://github.com/rogerwang/node-webkit
+sudo npm install –g nodewebkit
+
+# yeoman 
+# https://github.com/Dica-Developer/generator-node-webkit
+sudo npm install -g generator-node-webkit
+yo node-webkit
+
+# Distribute
+grunt dist-mac
+
+
+
+http://yeoman.io/learning/index.html
+
+
+https://github.com/chagel/gmail-ssb
+https://github.com/user4815162342/nw-ssb
+
+https://github.com/mllrsohn/node-webkit-builder
+
+http://modernweb.com/2014/02/10/build-desktop-apps-with-javascript-and-node-webkit/
+http://code.tutsplus.com/tutorials/introduction-to-html5-desktop-apps-with-node-webkit--net-36296
+
+
+SEARCH
+---
+leveldb
+https://github.com/fergiemcdowall/forage
+https://github.com/fergiemcdowall/search-index
+
+lunr
+http://lunrjs.com/
+
+redis
+https://github.com/visionmedia/reds
