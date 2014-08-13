@@ -1,3 +1,8 @@
+# Temp Files
+*~
+.*.sw?
+
+# Compiled
 *.py[co]
 
 # Packages
