@@ -1,0 +1,209 @@
+===
+M1: Basic Notebook
+===
+
+---
+SAVE A FILE:
+* HTML text
+* JSON metadata
+  * title
+  * id
+
+JSON should be exported w/ canonical-json for guaranteeing order
+https://github.com/mirkokiefer/canonical-json
+
+pages.json - full structure
+nested arrays {'name':'hash'}
+users.json
+settings.json
+
+/pages
+  page.content
+  page.metadata
+
+/files
+
+
+hostname, - unique
+salt+time, base58 or something the file
+content
+metadata in json
+
+
+---
+
+LOAD A FILE:
+* $('#content').load('blah')
+
+---
+
+LOCAL STORAGE:
+* repository
+* last edited file
+* hostname (seed)
+
+---
+
+INIT:
+* set repository
+* create folder
+
+---
+
+CREATE NEW PAGES:
+* Button
+  * Generate ID
+  * Edit
+
+---
+
+ADD NAV:
+* pick a tree view
+* tree view into repo
+* Add to Nav on new page creation
+
+---
+
+CONGRATS WE HAVE A WORKING WIKI
+Notes can now go here
+
+===
+M2: Basic Publishing
+===
+
+GIT CHECKINS
+* INIT: node-git initialize
+* SAVE: git-commit
+* PULL/PUSH: webworker?
+
+---
+
+BASIC AUTH/LOGIN
+* http://passportjs.org/
+
+---
+
+WEB ENABLE
+Move Infrastructure to ExpressJS/PJAX (so it can run in browser)
+
+main.html - run express
+https://groups.google.com/forum/#!topic/node-webkit/d7JYo_4aGWM
+
+start new window - local is the controller...
+https://github.com/rogerwang/node-webkit/wiki/Window
+https://github.com/rogerwang/node-webkit/wiki/Transfer-objects-between-window-and-node
+http://blog.csainty.com/2012/01/running-nodejs-server-alongside-your.html
+https://github.com/rogerwang/node-webkit/wiki/Using-Node-modules
+http://blog.infireal.com/wsgi-node-webkit-2014-03.html
+
+http://expressjs.com/guide.html
+http://stackoverflow.com/questions/19816038/express-js-equivalent-of-decorator-pattern-from-python-frameworks
+
+* Use PJAX
+  * /login
+  * /page/[code]
+      POST saves
+  * /media/[code]
+      POST saves
+  * /nav
+    * POST saves
+
+---
+
+CONGRATS WE HAVE A PUBLIC WIKI
+Everything is public!
+
+
+===
+M3: Better Editing
+===
+
+MEDIUM-EDITOR
+* switch to medium editor
+* add plugins
+* add image block insertion
+* make sure white space not being stripped, saved w/ white space (for useful git diffs!)
+
+---
+
+KEYBOARD SHORTCUTS
+* Cut and Paste
+* https://github.com/rogerwang/node-webkit/wiki/Shortcut
+* VIM basic nav
+
+---
+
+IMAGE UPLOADS
+* hook up the server-side for file uploads
+* check into repository
+
+---
+
+MARKDOWN
+* Import sophie/pen stuff
+
+---
+
+BETTER INSERT
+https://userstyles.org/styles/102262/twily-s-powerline-firefox-css
+https://github.com/bling/vim-airline
+* key commands
+* caret placment when clicking in
+
+---
+
+INSERT DATAGRID
+handsontable
+
+
+---
+
+DRAG N DROP UPLOAD
+http://www.dropzonejs.com
+* Save files
+
+---
+
+CONGRATS WE HAVE A BEST IN BREED INLINE EDITOR
+
+
+===
+M3: Better Publishing
+===
+
+SEARCH
+* Figure out what engine to use
+
+---
+
+AUTOCOMPLETE/SEARCH FRONT-END
+* Typeahead 
+
+---
+
+TAGS
+* Tag library
+* Attach metadata
+
+---
+
+PRIVATE
+* metadata
+* json filters based on user
+
+---
+
+CONGRATS WE HAVE A USEFUL REPOSITORY
+
+
+===
+FUTURE
+===
+* Internal Wiki Linking
+  * Show Related Pages
+* Show Edit History, Revisions w/ Intelligent Diff
+* Show Last edited pages
+* Annotations
+* Comments
+* Collaboration
+* Encryption/Locked Notes
