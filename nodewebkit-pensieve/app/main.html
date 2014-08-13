@@ -27,10 +27,24 @@
 
 
 <style>
+* {
+  font-family: Menlo;
+  font-size: 13px;
+}
 body {
   margin: 0;
   border: 0;
   padding: 0;
+}
+
+#title {
+  font-size: 1.2em;
+  width: 100%;
+  padding: 10px 0;
+  background-color: #444;
+  border: 0;
+  margin: 0;
+  color: #ffe;
 }
 #content {
   height: 100%;
@@ -45,14 +59,16 @@ body {
 </head>
 <body>
 
+<input id="title">
 <div id="content">
-  <p>This is editable text</p>
 </div>
+
 <input id="defocus">
 <script>
-$(function() {
-  $('#content').editable()
+var lastsave = 0;
 
+$(function() {
+  load();
   $('#content').click(function() {
     if(! $('#content').editable('selectionInEditor')[0] ) {
       $('#content').editable('focus');
@@ -73,6 +89,46 @@ $(function() {
     $('#defocus').blur();
   });
 });
+
+function load() {
+  var content = '/Users/lhl/Documents/pensieve/save.html';
+  var metadata = '/Users/lhl/Documents/pensieve/save.meta';
+
+  var fs = require('fs');
+  fs.readFile(content, 'utf8', function(err, data) {
+    if(err) {
+      console.log(err);
+    } else {
+      console.log(data);
+      $('#content').html(data);
+      $('#content').editable({
+        contentChangedCallback: save
+      });
+    }
+  });
+}
+
+function save() {
+  var now = (new Date).getTime();
+  if(now - lastsave >= 1000) {
+    var file = '/Users/lhl/Documents/pensieve/save.html';
+    console.log('save');  
+    var fs = require('fs');
+    var output = $("#content").editable("getHTML")[0];
+
+    var utf8 = require('utf8');
+    output = utf8.encode(output);
+
+    fs.writeFile(file, output, function(err) {
+      if(err) {
+        console.log(err);
+      } else {
+        console.log("The file was saved!");
+      }
+    });
+    lastsave = now;
+  }
+}
 </script>
 
 
