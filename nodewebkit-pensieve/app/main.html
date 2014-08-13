@@ -111,21 +111,35 @@ function load() {
 function save() {
   var now = (new Date).getTime();
   if(now - lastsave >= 1000) {
-    var file = '/Users/lhl/Documents/pensieve/save.html';
-    console.log('save');  
     var fs = require('fs');
-    var output = $("#content").editable("getHTML")[0];
-
     var utf8 = require('utf8');
-    output = utf8.encode(output);
 
-    fs.writeFile(file, output, function(err) {
+    // Save Content
+    var content = '/Users/lhl/Documents/pensieve/save.html';
+    var output = $("#content").editable("getHTML")[0];
+    output = utf8.encode(output);
+    fs.writeFile(content, output, function(err) {
       if(err) {
         console.log(err);
       } else {
         console.log("The file was saved!");
       }
     });
+
+    // Save Metadata
+    var metadata = '/Users/lhl/Documents/pensieve/save.meta';
+    var json = {}
+    json['title'] $('#title').val();
+    fs.writeFile(metadata, output, function(err) {
+      if(err) {
+        console.log(err);
+      } else {
+        console.log("The file metadata was saved!");
+      }
+    });
+
+
+
     lastsave = now;
   }
 }
