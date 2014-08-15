@@ -1,4 +1,20 @@
-### Node.js + npm
+Summary
+===
+Pensieve is composed of 2 parts:
+
+```
+pensieve-node
+  Core app and can be run as a stand-alone webapp. Can be run on the server with depencies
+
+pensieve-nodewebkit
+  Desktop wrapper. Distributed as a binary. Can be run easily w/ a single executable.
+```
+
+You should only need these instructions if you're trying to build/develop/customize either part.
+
+
+Setting up Node.js + npm
+---
 
 # OS X
 sudo port selfupdate
