@@ -35,17 +35,8 @@ V2
 
 Dependencies
 ------------
-
-
-Dev Roadmap
------------
-Stored in pensieve
-
-Note Storage
-* Gollum-compatible git storage
-* Git Backend
-* JSON metadata storage
-
+* nodejs app
+* node-webkit wrapper
 
 Existing Git-backed Wikis
 -------------------------
