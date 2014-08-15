@@ -1,0 +1,17 @@
+{
+  "name": "pensieve-node",
+  "description": "An personal wiki",
+  "version": "0.0.1",
+  "private": true,
+  "dependencies": {
+    "body-parser": "1.x",
+    "config.json": "*",
+    "express": "4.x",
+    "express-handlebars": "1.x",
+    "gift": "*",
+    "json-stable-stringify": "1.x",
+    "moment": "2.x",
+    "sha1": "1.x",
+    "utf8": "2.x"
+  }
+}
