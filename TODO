@@ -2,61 +2,6 @@
 M1: Basic Notebook
 ===
 
----
-SAVE A FILE:
-* HTML text
-* JSON metadata
-  * title
-  * id
-
-JSON should be exported w/ canonical-json for guaranteeing order
-https://github.com/mirkokiefer/canonical-json
-
-pages.json - full structure
-nested arrays {'name':'hash'}
-users.json
-settings.json
-
-/pages
-  page.content
-  page.metadata
-
-/files
-
-
-hostname, - unique
-salt+time, base58 or something the file
-content
-metadata in json
-
-
----
-
-LOAD A FILE:
-* $('#content').load('blah')
-
----
-
-LOCAL STORAGE:
-* repository
-* last edited file
-* hostname (seed)
-
----
-
-INIT:
-* set repository
-* create folder
-
----
-
-CREATE NEW PAGES:
-* Button
-  * Generate ID
-  * Edit
-
----
-
 ADD NAV:
 * pick a tree view
 * tree view into repo
@@ -66,6 +11,7 @@ ADD NAV:
 
 CONGRATS WE HAVE A WORKING WIKI
 Notes can now go here
+
 
 ===
 M2: Basic Publishing
@@ -102,7 +48,7 @@ http://stackoverflow.com/questions/19816038/express-js-equivalent-of-decorator-p
 * Use PJAX
   * /login
   * /page/[code]
-      POST saves
+    x POST saves
   * /media/[code]
       POST saves
   * /nav
@@ -207,3 +153,18 @@ FUTURE
 * Comments
 * Collaboration
 * Encryption/Locked Notes
+
+
+ORG
+---
+users.json
+settings.json
+/images
+/files
+
+---
+
+INIT:
+* set repository
+* create folder
+
