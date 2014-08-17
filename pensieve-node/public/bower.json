@@ -1,0 +1,27 @@
+{
+  "name": "pensieve-node",
+  "version": "0.0.1",
+  "homepage": "https://github.com/lhl/pensieve",
+  "authors": [
+    "Leonard Lin <lhl@randomfoo.net>"
+  ],
+  "description": "A personal notebook.",
+  "license": "GPLv2+",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "jquery": "~2.1.1",
+    "mousetrap": "~1.4.6",
+    "rusha": "*",
+    "medium-editor": "~1.9.0",
+    "medium-editor-insert-plugin": "~0.2.9",
+    "handsontable": "~0.10.5",
+    "fancytree": "~2.2.0"
+  }
+}
