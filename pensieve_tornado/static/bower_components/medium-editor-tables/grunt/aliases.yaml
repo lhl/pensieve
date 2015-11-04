@@ -1,0 +1,27 @@
+test:
+  - jscs
+  - jshint
+  - jasmine
+
+travis:
+  - test
+  - coveralls
+
+lint:
+  - jscs
+  - jshint
+
+js:
+  - concat
+  - test
+  - uglify
+
+css:
+  - sass
+  - autoprefixer
+  - cssmin
+
+default:
+  - css
+  - js
+  - watch

@@ -1,0 +1,8 @@
+import "./test-command"
+import "./test-selection"
+import "./test-keys"
+import "./test-options"
+import "./test-domchange"
+import "./test-history"
+import "./test-collab"
+import "./test-ranges"

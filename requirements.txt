@@ -1,0 +1,4 @@
+gitpython
+pillow
+PyQt5
+tornado

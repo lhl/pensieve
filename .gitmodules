@@ -1,0 +1,3 @@
+[submodule "pyssb"]
+	path = pyssb
+	url = https://github.com/lhl/pyssb

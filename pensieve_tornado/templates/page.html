@@ -1,0 +1,115 @@
+{% extends 0.base.html %}
+
+{% block body %}
+<input id="title" value="{{ title }}">
+<div id="content">
+{{{ content }}}
+</div>
+
+<input id="defocus">
+<button id="new">New Page</button>
+<script>
+var lastsave = 0;
+var page = {{{ page }}};
+var pages = {{{ pages }}};
+
+$(function() {
+  // Init
+  if(!page['id']) {
+    create();
+  } else {
+    $('#content').editable({
+      contentChangedCallback: save
+    });
+  }
+
+  // Data Behaviors
+  $('#title').keypress(function() {
+    save();
+  });
+
+  $(window).bind('beforeunload', function(){
+    save(1);
+  });
+
+
+  // UI
+  $('#new').click(function() {
+    create();
+  });
+
+  $('#content').click(function() {
+    if(! $('#content').editable('selectionInEditor')[0] ) {
+      $('#content').editable('focus');
+      $("#content").editable('setSelection', $('.froala-element').get(0), 2, null, 0);
+
+    }
+  });
+
+  Mousetrap.bind('i', function() {
+    console.log('i');
+    $('#content').editable('focus')
+    return false;
+  });
+
+  Mousetrap.bindGlobal('escape', function() {
+    save(1);
+    $('#defocus').focus();
+    $('#defocus').blur();
+  });
+});
+
+function load() {
+  // Called on Click
+  // pjax
+  $('#content').html(data);
+  $('#content').editable({
+    contentChangedCallback: save
+  });
+}
+
+
+function create() {
+  // New Page Metadata
+  page = {};
+  page['seed'] = location.hostname + ':' + new Date().getTime();
+  page['id'] = new Rusha().digest(page['seed']);
+
+  // Clear Content
+  $('#title').val('');
+  $('#content').html('');
+  $('#content').editable({
+    contentChangedCallback: save
+  });
+
+  // Add to nav
+  pages.push({id: page['id'],
+              title: ''
+             }
+            );
+}
+
+function save(force) {
+  force = (typeof force === "undefined") ? 0 : force;
+
+  var now = (new Date).getTime();
+  if(now - lastsave >= 1000 || force) {
+    var data = {
+      title: $('#title').val(),
+      id: page['id'],
+      seed: page['seed'],
+      content: $("#content").editable("getHTML")[0]
+    }
+    console.log('save');
+
+    // Save Page
+    $.post('/page/' + page['id'], data);
+
+    // Save Pages
+    $.post('/pages', { pages: pages });
+
+    lastsave = now;
+  }
+}
+</script>
+{% end %}
