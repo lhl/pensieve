@@ -48,13 +48,13 @@ Pensieve App
 class Pensieve(tornado.web.Application):
   def __init__(self):
     # Load Config
-    self.settings = QtCore.QSettings('pensieve', 'tornado')
+    self.config = QtCore.QSettings('pensieve', 'tornado')
     try:
-      self.repo = self.settings.value('repo')
+      self.repo = self.config.value('repo')
     except:
       self.repo = None
     try:
-      self.page = self.settings.value('page')
+      self.page = self.config.value('page')
     except:
       self.page = None
 
@@ -110,8 +110,17 @@ class SetupHandler(BaseHandler):
     pass
 
   def post(self):
-    self.application.settings.setValue('repo', 'hi')
-    # redirect to /main
+    # Write Repo
+    repo = self.get_argument('repo', None)
+    if repo:
+      self.application.config.setValue('repo', repo)
+      self.application.repo = self.application.config.value('repo')
+
+    # TODO: 
+    # * Create Folder, Repo if necessary 
+    # * Error
+
+    self.redirect('/')
 
 
 class APIConfigHandler(APIBaseHandler):
