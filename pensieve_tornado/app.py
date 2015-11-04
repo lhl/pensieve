@@ -33,30 +33,17 @@ Pensieve App
 /image/
 /file/
 
-
 /api/v1/config
 /api/v1/nav
 /api/v1/page
 /api/v1/page/[id]
-
-
-
-
 '''
 
 
 class Pensieve(tornado.web.Application):
   def __init__(self):
     # Load Config
-    self.config = QtCore.QSettings('pensieve', 'tornado')
-    try:
-      self.repo = self.config.value('repo')
-    except:
-      self.repo = None
-    try:
-      self.page = self.config.value('page')
-    except:
-      self.page = None
+    self.loadconfig()
 
 
     handlers = [
@@ -79,6 +66,24 @@ class Pensieve(tornado.web.Application):
     tornado.web.Application.__init__(self, handlers, **settings)
 
 
+  def saveconfig(self):
+    # to write http://pyqt.sourceforge.net/Docs/PyQt5/pyqt_qsettings.html
+    del self.config
+    self.loadconfig()
+
+
+  def loadconfig(self):
+    self.config = QtCore.QSettings('pensieve', 'tornado')
+    try:
+      self.repo = self.config.value('repo')
+    except:
+      self.repo = None
+    try:
+      self.page = self.config.value('page')
+    except:
+      self.page = None
+
+
 class BaseHandler(tornado.web.RequestHandler):
   pass
 
@@ -89,19 +94,20 @@ class APIBaseHandler(BaseHandler):
 
 class HomeHandler(BaseHandler):
   def get(self):
+    print('repo: %s' % self.application.repo)
+    print('page: %s' % self.application.page)
+
     if not self.application.repo:
       self.redirect('/setup')
-      return
-   
-    pass
-    # Load pages.json from config['repo']
-    # Redirect to /page/[last-page]
-    # else if no page, redirect to /page (empty, create)
+    elif self.application.page:
+      self.redirect('/page/%s' % self.application.page)
+    else:
+      self.redirect('/page')
 
 
 class PageHandler(BaseHandler):
-  def get(self):
-    pass
+  def get(self, page):
+    self.render('page.html', title='temp', content='temp', page='page', pages='pages')
 
 
 class SetupHandler(BaseHandler):
@@ -115,6 +121,7 @@ class SetupHandler(BaseHandler):
     if repo:
       self.application.config.setValue('repo', repo)
       self.application.repo = self.application.config.value('repo')
+      self.application.saveconfig()
 
     # TODO: 
     # * Create Folder, Repo if necessary 
