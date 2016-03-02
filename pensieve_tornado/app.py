@@ -48,7 +48,13 @@ class Pensieve(tornado.web.Application):
 
     handlers = [
       (r'/', HomeHandler),
+
       (r'/page(/?.*)', PageHandler),
+
+      # Temp
+      (r'/pages(/?.*)', PageHandler),
+
+
       (r'/setup', SetupHandler),
 
       (r'/api/v1/config', APIConfigHandler),
@@ -108,6 +114,14 @@ class HomeHandler(BaseHandler):
 class PageHandler(BaseHandler):
   def get(self, page):
     self.render('page.html', title='temp', content='temp', page='page', pages='pages')
+
+  def post(self, page):
+   if page[0] == '/':
+     pass
+
+
+    print(self.arguments)
+    print(page)
 
 
 class SetupHandler(BaseHandler):
