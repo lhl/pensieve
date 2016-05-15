@@ -120,8 +120,8 @@ class PageHandler(BaseHandler):
      pass
 
 
-    print(self.arguments)
-    print(page)
+   print(self.arguments)
+   print(page)
 
 
 class SetupHandler(BaseHandler):
