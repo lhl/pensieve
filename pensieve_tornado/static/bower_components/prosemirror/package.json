@@ -1,7 +1,8 @@
 {
   "name": "prosemirror",
-  "version": "0.0.1",
+  "version": "0.6.1",
   "description": "Well-defined WYSIWYG editor",
+  "main": "dist/edit/index.js",
   "license": "MIT",
   "maintainers": [
     {
@@ -15,22 +16,28 @@
     "url": "git://github.com/prosemirror/prosemirror.git"
   },
   "dependencies": {
-    "insert-css": "^0.2.0",
-    "markdown-it": "^4.0.0"
+    "browserkeymap": "^0.1.0",
+    "markdown-it": "^4.4.0"
   },
   "devDependencies": {
-    "xmldom": "^0.1.0",
-    "babel": "^5.1.13",
-    "babelify": "^6.0.2",
-    "watchify": "^3.2.0",
-    "blint": "^0.4.0"
+    "babel-cli": "^6.4.0",
+    "babel-core": "^6.4.5",
+    "babel-preset-es2015": "^6.3.13",
+    "blint": "^0.5.0",
+    "jsdom": "^8.0.4",
+    "moduleserve": "^0.7.0",
+    "distfs": "^0.1.1",
+    "punycode": "^1.4.0",
+    "rimraf": "^2.5.0",
+    "source-map-support": "^0.2.10"
   },
   "scripts": {
-    "test": "node test/start.js",
-    "demo": "watchify -d -v --outfile demo/demo-built.js -t babelify demo/demo.js",
-    "browsertests": "watchify -d --outfile demo/test-built.js -t babelify demo/test.js",
+    "test": "node dist/test/run.js",
+    "demo": "moduleserve demo",
+    "distfs": "mkdir -p dist && distfs src dist",
     "dist": "babel -d dist src",
     "dist-watch": "babel -w -d dist src",
-    "lint": "blint --browser --ecmaVersion 6 --forbidSemicolons src"
+    "lint": "blint --browser --ecmaVersion 6 --forbidSemicolons src || true",
+    "prepublish": "rimraf dist && babel -d dist src"
   }
 }

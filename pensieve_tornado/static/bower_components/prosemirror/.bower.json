@@ -1,14 +1,15 @@
 {
   "name": "prosemirror",
   "homepage": "https://github.com/ProseMirror/prosemirror",
-  "_release": "12280cde93",
+  "version": "0.6.1",
+  "_release": "0.6.1",
   "_resolution": {
-    "type": "branch",
-    "branch": "master",
-    "commit": "12280cde9360a494cb7f63f1d3e27e7518eb591c"
+    "type": "version",
+    "tag": "0.6.1",
+    "commit": "64948461d4d96a353bc0cc70ab025344570bf8e2"
   },
-  "_source": "git://github.com/ProseMirror/prosemirror.git",
-  "_target": "*",
+  "_source": "https://github.com/ProseMirror/prosemirror.git",
+  "_target": "^0.6.1",
   "_originalSource": "prosemirror",
   "_direct": true
 }

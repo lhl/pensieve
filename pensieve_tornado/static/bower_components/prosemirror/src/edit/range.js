@@ -1,15 +1,26 @@
-import {Map} from "./map"
-import {eventMixin} from "./event"
+import {eventMixin} from "../util/event"
 
+// ;; A [marked range](#ProseMirror.markRange). Includes the methods
+// from the [event mixin](#EventMixin).
 export class MarkedRange {
   constructor(from, to, options) {
     this.options = options || {}
+    // :: ?number
+    // The current start position of the range. Updated whenever the
+    // editor's document is changed. Set to `null` when the marked
+    // range is [removed](#ProseMirror.removeRange).
     this.from = from
+    // :: ?number
+    // The current end position of the range. Updated whenever the
+    // editor's document is changed. Set to `null` when the marked
+    // range is [removed](#ProseMirror.removeRange).
     this.to = to
   }
 
-  clear() {
-    this.signal("removed", this.from)
+  remove() {
+    // :: (from: number, to: number) #path=MarkedRange#events#removed
+    // Signalled when the marked range is removed from the editor.
+    this.signal("removed", this.from, Math.max(this.to, this.from))
     this.from = this.to = null
   }
 }
@@ -26,11 +37,11 @@ class RangeSorter {
     for (;;) {
       if (max < min + 10) {
         for (let i = min; i < max; i++)
-          if (this.sorted[i].at.cmp(at) >= 0) return i
+          if (this.sorted[i].at >= at) return i
         return max
       }
       let mid = (min + max) >> 1
-      if (this.sorted[mid].at.cmp(at) > 0) max = mid
+      if (this.sorted[mid].at > at) max = mid
       else min = mid
     }
   }
@@ -58,7 +69,7 @@ class RangeSorter {
       let cur = this.sorted[i]
       let at = cur.at = cur.type == "open" ? cur.range.from : cur.range.to
       let pos = i
-      while (pos > 0 && this.sorted[pos - 1].at.cmp(at) > 0) {
+      while (pos > 0 && this.sorted[pos - 1].at > at) {
         this.sorted[pos] = this.sorted[pos - 1]
         this.sorted[--pos] = cur
       }
@@ -71,18 +82,14 @@ export class RangeStore {
     this.pm = pm
     this.ranges = []
     this.sorted = new RangeSorter
-    this.resetDirty()
-  }
-
-  resetDirty() {
-    this.dirty = new Map
   }
 
   addRange(range) {
     this.ranges.push(range)
     this.sorted.insert({type: "open", at: range.from, range: range})
     this.sorted.insert({type: "close", at: range.to, range: range})
-    this.markDisplayDirty(range)
+    if (range.options.className)
+      this.pm.markRangeDirty(range.from, range.to)
   }
 
   removeRange(range) {
@@ -91,53 +98,25 @@ export class RangeStore {
       this.ranges.splice(found, 1)
       this.sorted.remove(range.from, range)
       this.sorted.remove(range.to, range)
-      this.markDisplayDirty(range)
-      range.clear()
+      if (range.options.className)
+        this.pm.markRangeDirty(range.from, range.to)
+      range.remove()
     }
   }
 
   transform(mapping) {
     for (let i = 0; i < this.ranges.length; i++) {
       let range = this.ranges[i]
-      range.from = mapping.map(range.from, range.options.inclusiveLeft ? -1 : 1).pos
-      range.to = mapping.map(range.to, range.options.inclusiveRight ? 1 : -1).pos
-      let diff = range.from.cmp(range.to)
-      if (range.options.clearWhenEmpty !== false && diff >= 0) {
+      range.from = mapping.map(range.from, range.options.inclusiveLeft ? -1 : 1)
+      range.to = mapping.map(range.to, range.options.inclusiveRight ? 1 : -1)
+      if (range.options.removeWhenEmpty !== false && range.from >= range.to) {
         this.removeRange(range)
         i--
-      } else if (diff > 0) {
+      } else if (range.from > range.to) {
         range.to = range.from
       }
     }
     this.sorted.resort()
-  }
-
-  markDisplayDirty(range) {
-    this.pm.ensureOperation()
-    let dirty = this.dirty
-    let from = range.from, to = range.to
-    for (let depth = 0, node = this.pm.doc;; depth++) {
-      let fromEnd = depth == from.depth, toEnd = depth == to.depth
-      if (!fromEnd && !toEnd && from.path[depth] == to.path[depth]) {
-        let child = node.child(from.path[depth])
-        if (!dirty.has(child)) dirty.set(child, 1)
-        node = child
-      } else {
-        let start = fromEnd ? from.offset : from.path[depth]
-        let end = toEnd ? to.offset : to.path[depth] + 1
-        if (node.isTextblock) {
-          for (let offset = 0, i = 0; offset < end; i++) {
-            let child = node.child(i)
-            offset += child.offset
-            if (offset > start) dirty.set(child, 2)
-          }
-        } else {
-          for (let i = start; i < end; i++)
-            dirty.set(node.child(i), 2)
-        }
-        break
-      }
-    }
   }
 
   activeRangeTracker() {
@@ -154,27 +133,28 @@ class RangeTracker {
 
   advanceTo(pos) {
     let next
-    while (this.pos < this.sorted.length && (next = this.sorted[this.pos]).at.cmp(pos) <= 0) {
+    while (this.pos < this.sorted.length && (next = this.sorted[this.pos]).at <= pos) {
       let className = next.range.options.className
-      if (!className) continue
-      if (next.type == "open")
-        this.current.push(className)
-      else
-        this.current.splice(this.current.indexOf(className), 1)
+      if (className) {
+        if (next.type == "open")
+          this.current.push(className)
+        else
+          this.current.splice(this.current.indexOf(className), 1)
+      }
       this.pos++
     }
   }
 
   nextChangeBefore(pos) {
     for (;;) {
-      if (this.pos == this.sorted.length) return null
+      if (this.pos == this.sorted.length) return -1
       let next = this.sorted[this.pos]
       if (!next.range.options.className)
         this.pos++
-      else if (next.at.cmp(pos) >= 0)
-        return null
+      else if (next.at >= pos)
+        return -1
       else
-        return next.at.offset
+        return next.at
     }
   }
 }

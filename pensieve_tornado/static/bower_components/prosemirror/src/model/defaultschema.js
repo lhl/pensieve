@@ -1,72 +1,118 @@
-import {SchemaSpec, Schema, Block, Textblock, Inline, Text,
-        Attribute, StyleType} from "./schema"
+import {SchemaSpec, Schema, Block, Textblock, Inline, Text, Attribute, MarkType, NodeKind} from "./schema"
 
+// ;; The default top-level document node type.
 export class Doc extends Block {
-  static get kind() { return "." }
+  get kind() { return null }
 }
 
+// ;; The default blockquote node type.
 export class BlockQuote extends Block {}
 
+// :: NodeKind The node kind used for list items in the default
+// schema.
+NodeKind.list_item = new NodeKind("list_item")
+
+// ;; The default ordered list node type. Has a single attribute,
+// `order`, which determines the number at which the list starts
+// counting, and defaults to 1.
 export class OrderedList extends Block {
-  static get contains() { return "list_item" }
+  get contains() { return NodeKind.list_item }
+  get attrs() { return {order: new Attribute({default: "1"})} }
 }
-OrderedList.attributes = {order: new Attribute("1")}
 
+// ;; The default bullet list node type.
 export class BulletList extends Block {
-  static get contains() { return "list_item" }
+  get contains() { return NodeKind.list_item }
 }
 
+// ;; The default list item node type.
 export class ListItem extends Block {
-  static get kind() { return "." }
+  get kind() { return NodeKind.list_item }
 }
 
+// ;; The default horizontal rule node type.
 export class HorizontalRule extends Block {
-  static get contains() { return null }
+  get contains() { return null }
 }
 
-export class Heading extends Textblock {}
-Heading.attributes = {level: new Attribute("1")}
+// ;; The default heading node type. Has a single attribute
+// `level`, which indicates the heading level, and defaults to 1.
+export class Heading extends Textblock {
+  get attrs() { return {level: new Attribute({default: "1"})} }
+  // :: number
+  // Controls the maximum heading level. Has the value 6 in the
+  // `Heading` class, but you can override it in a subclass.
+  get maxLevel() { return 6 }
+}
 
+// ;; The default code block / listing node type. Only
+// allows unmarked text nodes inside of it.
 export class CodeBlock extends Textblock {
-  static get contains() { return "text" }
+  get contains() { return NodeKind.text }
+  get containsMarks() { return false }
   get isCode() { return true }
 }
 
+// ;; The default paragraph node type.
 export class Paragraph extends Textblock {
   get defaultTextblock() { return true }
 }
 
-export class Image extends Inline {}
-Image.attributes = {
-  src: new Attribute,
-  alt: new Attribute(""),
-  title: new Attribute("")
+// ;; The default inline image node type. Has these
+// attributes:
+//
+// - **`src`** (required): The URL of the image.
+// - **`alt`**: The alt text.
+// - **`title`**: The title of the image.
+export class Image extends Inline {
+  get attrs() {
+    return {
+      src: new Attribute,
+      alt: new Attribute({default: ""}),
+      title: new Attribute({default: ""})
+    }
+  }
+  get draggable() { return true }
 }
 
-export class HardBreak extends Inline {}
-
-// Style types
-
-export class EmStyle extends StyleType {
-  static get rank() { return  51 }
+// ;; The default hard break node type.
+export class HardBreak extends Inline {
+  get selectable() { return false }
+  get isBR() { return true }
 }
 
-export class StrongStyle extends StyleType {
-  static get rank() { return  52 }
+// ;; The default emphasis mark type.
+export class EmMark extends MarkType {
+  static get rank() { return 31 }
 }
 
-export class LinkStyle extends StyleType {
-  static get rank() { return  53 }
-}
-LinkStyle.attributes = {
-  href: new Attribute,
-  title: new Attribute("")
+// ;; The default strong mark type.
+export class StrongMark extends MarkType {
+  static get rank() { return 32 }
 }
 
-export class CodeStyle extends StyleType {
+// ;; The default link mark type. Has these attributes:
+//
+// - **`href`** (required): The link target.
+// - **`title`**: The link's title.
+export class LinkMark extends MarkType {
+  static get rank() { return 60 }
+  get attrs() {
+    return {
+      href: new Attribute,
+      title: new Attribute({default: ""})
+    }
+  }
+}
+
+// ;; The default code font mark type.
+export class CodeMark extends MarkType {
   static get rank() { return 101 }
+  get isCode() { return true }
 }
 
+// :: SchemaSpec
+// The specification for the default schema.
 const defaultSpec = new SchemaSpec({
   doc: Doc,
   blockquote: BlockQuote,
@@ -83,10 +129,12 @@ const defaultSpec = new SchemaSpec({
   image: Image,
   hard_break: HardBreak
 }, {
-  em: EmStyle,
-  strong: StrongStyle,
-  link: LinkStyle,
-  code: CodeStyle
+  em: EmMark,
+  strong: StrongMark,
+  link: LinkMark,
+  code: CodeMark
 })
 
+// :: Schema
+// ProseMirror's default document schema.
 export const defaultSchema = new Schema(defaultSpec)

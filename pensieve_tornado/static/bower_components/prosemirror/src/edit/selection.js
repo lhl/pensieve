@@ -1,68 +1,156 @@
-import {Pos} from "../model"
-
 import {contains, browser} from "../dom"
 
-export class Selection {
-  constructor(pm) {
+import {posFromDOM, DOMAfterPos, DOMFromPos, coordsAtPos} from "./dompos"
+
+// Track the state of the current editor selection. Keeps the editor
+// selection in sync with the DOM selection by polling for changes,
+// as there is no DOM event for DOM selection changes.
+export class SelectionState {
+  constructor(pm, range) {
     this.pm = pm
+    // The current editor selection.
+    this.range = range
+
+    // The timeout ID for the poller when active.
     this.polling = null
+    // Track the state of the DOM selection.
     this.lastAnchorNode = this.lastHeadNode = this.lastAnchorOffset = this.lastHeadOffset = null
-    let start = Pos.start(pm.doc)
-    this.range = new Range(start, start)
+    // The corresponding DOM node when a node selection is active.
+    this.lastNode = null
+
     pm.content.addEventListener("focus", () => this.receivedFocus())
+
+    this.poller = this.poller.bind(this)
   }
 
+  // : (Selection, boolean)
+  // Set the current selection and signal an event on the editor.
   setAndSignal(range, clearLast) {
     this.set(range, clearLast)
+    // :: () #path=ProseMirror#events#selectionChange
+    // Indicates that the editor's selection has changed.
     this.pm.signal("selectionChange")
   }
 
+  // : (Selection, boolean)
+  // Set the current selection.
   set(range, clearLast) {
+    this.pm.ensureOperation({readSelection: false})
     this.range = range
     if (clearLast !== false) this.lastAnchorNode = null
   }
 
-  poll(force) {
-    if (this.pm.input.composing || !hasFocus(this.pm)) return
-    let sel = getSelection()
-    if (force || sel.anchorNode != this.lastAnchorNode || sel.anchorOffset != this.lastAnchorOffset ||
-        sel.focusNode != this.lastHeadNode || sel.focusOffset != this.lastHeadOffset) {
-      let {pos: anchor, inline: anchorInline} =
-          posFromDOM(this.pm, sel.anchorNode, sel.anchorOffset, force)
-      let {pos: head, inline: headInline} =
-          posFromDOM(this.pm, sel.focusNode, sel.focusOffset, force)
-      this.lastAnchorNode = sel.anchorNode; this.lastAnchorOffset = sel.anchorOffset
-      this.lastHeadNode = sel.focusNode; this.lastHeadOffset = sel.focusOffset
-      this.pm.sel.setAndSignal(new Range(anchorInline ? anchor : moveInline(this.pm.doc, anchor, this.range.anchor),
-                                         headInline ? head: moveInline(this.pm.doc, head, this.range.head)), false)
-      if (this.range.anchor.cmp(anchor) || this.range.head.cmp(head))
-        this.toDOM(true)
-      return true
+  poller() {
+    if (hasFocus(this.pm)) {
+      if (!this.pm.operation) this.readFromDOM()
+      this.polling = setTimeout(this.poller, 100)
+    } else {
+      this.polling = null
     }
   }
 
-  toDOM(force, takeFocus) {
+  startPolling() {
+    clearTimeout(this.polling)
+    this.polling = setTimeout(this.poller, 50)
+  }
+
+  fastPoll() {
+    this.startPolling()
+  }
+
+  stopPolling() {
+    clearTimeout(this.polling)
+    this.polling = null
+  }
+
+  // : () → bool
+  // Whether the DOM selection has changed from the last known state.
+  domChanged() {
     let sel = window.getSelection()
+    return sel.anchorNode != this.lastAnchorNode || sel.anchorOffset != this.lastAnchorOffset ||
+      sel.focusNode != this.lastHeadNode || sel.focusOffset != this.lastHeadOffset
+  }
+
+  // Store the current state of the DOM selection.
+  storeDOMState() {
+    let sel = window.getSelection()
+    this.lastAnchorNode = sel.anchorNode; this.lastAnchorOffset = sel.anchorOffset
+    this.lastHeadNode = sel.focusNode; this.lastHeadOffset = sel.focusOffset
+  }
+
+  // : () → bool
+  // When the DOM selection changes in a notable manner, modify the
+  // current selection state to match.
+  readFromDOM() {
+    if (!hasFocus(this.pm) || !this.domChanged()) return false
+
+    let sel = window.getSelection(), doc = this.pm.doc
+    let anchor = posFromDOM(this.pm, sel.anchorNode, sel.anchorOffset)
+    let head = sel.isCollapsed ? anchor : posFromDOM(this.pm, sel.focusNode, sel.focusOffset)
+
+    let newRange = findSelectionNear(doc, head, this.range.head != null && this.range.head < head ? 1 : -1)
+    if (newRange instanceof TextSelection) {
+      let selNearAnchor = findSelectionNear(doc, anchor, anchor > newRange.to ? -1 : 1, true)
+      newRange = new TextSelection(selNearAnchor.anchor, newRange.head)
+    } else if (anchor < newRange.from || anchor > newRange.to) {
+      // If head falls on a node, but anchor falls outside of it,
+      // create a text selection between them
+      let inv = anchor > newRange.to
+      newRange = new TextSelection(findSelectionNear(doc, anchor, inv ? -1 : 1, true).anchor,
+                                   findSelectionNear(doc, inv ? newRange.from : newRange.to, inv ? 1 : -1, true).head)
+    }
+    this.setAndSignal(newRange)
+
+    if (newRange instanceof NodeSelection || newRange.head != head || newRange.anchor != anchor) {
+      this.toDOM()
+    } else {
+      this.clearNode()
+      this.storeDOMState()
+    }
+    return true
+  }
+
+  toDOM(takeFocus) {
     if (!hasFocus(this.pm)) {
       if (!takeFocus) return
       // See https://bugzilla.mozilla.org/show_bug.cgi?id=921444
       else if (browser.gecko) this.pm.content.focus()
     }
-    if (!force &&
-        sel.anchorNode == this.lastAnchorNode && sel.anchorOffset == this.lastAnchorOffset &&
-        sel.focusNode == this.lastHeadNode && sel.focusOffset == this.lastHeadOffset)
-      return
+    if (this.range instanceof NodeSelection)
+      this.nodeToDOM()
+    else
+      this.rangeToDOM()
+  }
 
-    let range = document.createRange()
-    let content = this.pm.content
-    let anchor = DOMFromPos(content, this.range.anchor)
-    let head = DOMFromPos(content, this.range.head)
+  // Make changes to the DOM for a node selection.
+  nodeToDOM() {
+    let dom = DOMAfterPos(this.pm, this.range.from)
+    if (dom != this.lastNode) {
+      this.clearNode()
+      dom.classList.add("ProseMirror-selectednode")
+      this.pm.content.classList.add("ProseMirror-nodeselection")
+      this.lastNode = dom
+    }
+    let range = document.createRange(), sel = window.getSelection()
+    range.selectNode(dom)
+    sel.removeAllRanges()
+    sel.addRange(range)
+    this.storeDOMState()
+  }
 
+  // Make changes to the DOM for a text selection.
+  rangeToDOM() {
+    this.clearNode()
+
+    let anchor = DOMFromPos(this.pm, this.range.anchor)
+    let head = DOMFromPos(this.pm, this.range.head)
+
+    let sel = window.getSelection(), range = document.createRange()
     if (sel.extend) {
       range.setEnd(anchor.node, anchor.offset)
       range.collapse(false)
     } else {
-      if (this.range.anchor.cmp(this.range.head) > 0) { let tmp = anchor; anchor = head; head = tmp }
+      if (this.range.anchor > this.range.head) { let tmp = anchor; anchor = head; head = tmp }
       range.setEnd(head.node, head.offset)
       range.setStart(anchor.node, anchor.offset)
     }
@@ -70,295 +158,232 @@ export class Selection {
     sel.addRange(range)
     if (sel.extend)
       sel.extend(head.node, head.offset)
+    this.storeDOMState()
+  }
 
-    this.lastAnchorNode = anchor.node; this.lastAnchorOffset = anchor.offset
-    this.lastHeadNode = head.node; this.lastHeadOffset = head.offset
+  // Clear all DOM statefulness of the last node selection.
+  clearNode() {
+    if (this.lastNode) {
+      this.lastNode.classList.remove("ProseMirror-selectednode")
+      this.pm.content.classList.remove("ProseMirror-nodeselection")
+      this.lastNode = null
+      return true
+    }
   }
 
   receivedFocus() {
-    let poll = () => {
-      if (document.activeElement == this.pm.content) {
-        if (!this.pm.operation) this.poll()
-        clearTimeout(this.polling)
-        this.polling = setTimeout(poll, 50)
-      }
-    }
-    this.polling = setTimeout(poll, 20)
+    if (this.polling == null) this.startPolling()
   }
 }
 
-function windowRect() {
-  return {left: 0, right: window.innerWidth,
-          top: 0, bottom: window.innerHeight}
+// ;; An editor selection. Can be one of two selection types:
+// `TextSelection` and `NodeSelection`. Both have the properties
+// listed here, but also contain more information (such as the
+// selected [node](#NodeSelection.node) or the
+// [head](#TextSelection.head) and [anchor](#TextSelection.anchor)).
+export class Selection {
+  // :: number #path=Selection.prototype.from
+  // The left-bound of the selection.
+
+  // :: number #path=Selection.prototype.to
+  // The right-bound of the selection.
+
+  // :: bool #path=Selection.empty
+  // True if the selection is an empty text selection (head an anchor
+  // are the same).
+
+  // :: (other: Selection) → bool #path=Selection.eq
+  // Test whether the selection is the same as another selection.
+
+  // :: (doc: Node, mapping: Mappable) → Selection #path=Selection.map
+  // Map this selection through a [mappable](#Mappable) thing. `doc`
+  // should be the new document, to which we are mapping.
 }
 
-/**
- * Selection range class.
- *
- * A range consists of a head (the active location of the cursor)
- * and an anchor (the start location of the selection).
- */
-export class Range {
+// ;; A text selection represents a classical editor
+// selection, with a head (the moving side) and anchor (immobile
+// side), both of which point into textblock nodes. It can be empty (a
+// regular cursor position).
+export class TextSelection extends Selection {
+  // :: (number, ?number)
+  // Construct a text selection. When `head` is not given, it defaults
+  // to `anchor`.
   constructor(anchor, head) {
+    super()
+    // :: number
+    // The selection's immobile side (does not move when pressing
+    // shift-arrow).
     this.anchor = anchor
-    this.head = head
+    // :: number
+    // The selection's mobile side (the side that moves when pressing
+    // shift-arrow).
+    this.head = head == null ? anchor : head
   }
 
-  get inverted() { return this.anchor.cmp(this.head) > 0 }
-  get from() { return this.inverted ? this.head : this.anchor }
-  get to() { return this.inverted ? this.anchor : this.head }
-  get empty() { return this.anchor.cmp(this.head) == 0 }
-}
+  get inverted() { return this.anchor > this.head }
+  get from() { return Math.min(this.head, this.anchor) }
+  get to() { return Math.max(this.head, this.anchor) }
+  get empty() { return this.anchor == this.head }
 
-function attr(node, name) {
-  return node.nodeType == 1 && node.getAttribute(name)
-}
-
-function scanOffset(node, parent) {
-  for (var scan = node ? node.previousSibling : parent.lastChild; scan; scan = scan.previousSibling) {
-    let tag, range
-    if (tag = attr(scan, "pm-path"))
-      return +tag + 1
-    else if (range = attr(scan, "pm-span"))
-      return +/-(\d+)/.exec(range)[1]
-  }
-  return 0
-}
-
-function posFromDOM(pm, node, domOffset, force) {
-  if (!force && pm.operation && pm.doc != pm.operation.doc)
-    throw new Error("Fetching a position from an outdated DOM structure")
-
-  let path = [], inText = false, offset = null, inline = false, prev
-
-  if (node.nodeType == 3) {
-    inText = true
-    prev = node
-    node = node.parentNode
-  } else {
-    prev = node.childNodes[domOffset]
+  eq(other) {
+    return other instanceof TextSelection && other.head == this.head && other.anchor == this.anchor
   }
 
-  for (let cur = node; cur != pm.content; prev = cur, cur = cur.parentNode) {
-    let tag, range
-    if (tag = cur.getAttribute("pm-path")) {
-      path.unshift(+tag)
-      if (offset == null)
-        offset = scanOffset(prev, cur)
-    } else if (range = cur.getAttribute("pm-span")) {
-      let [_, from, to] = /(\d+)-(\d+)/.exec(range)
-      if (inText)
-        offset = +from + domOffset
-      else
-        offset = domOffset ? +to : +from
-      inline = true
-    } else if (inText && (tag = cur.getAttribute("pm-span-offset"))) {
-      domOffset += +tag
-    }
+  map(doc, mapping) {
+    let head = mapping.map(this.head)
+    if (!doc.resolve(head).parent.isTextblock)
+      return findSelectionNear(doc, head)
+    let anchor = mapping.map(this.anchor)
+    return new TextSelection(doc.resolve(anchor).parent.isTextblock ? anchor : head, head)
   }
-  if (offset == null) offset = scanOffset(prev, node)
-  return {pos: new Pos(path, offset), inline}
-}
 
-function moveInline(doc, pos, from) {
-  let dir = pos.cmp(from)
-  let found = dir < 0 ? Pos.before(doc, pos) : Pos.after(doc, pos)
-  if (!found)
-    found = dir >= 0 ? Pos.before(doc, pos) : Pos.after(doc, pos)
-  return found
-}
+  get token() {
+    return new SelectionToken(TextSelection, this.anchor, this.head)
+  }
 
-export function findByPath(node, n, fromEnd) {
-  for (let ch = fromEnd ? node.lastChild : node.firstChild; ch;
-       ch = fromEnd ? ch.previousSibling : ch.nextSibling) {
-    if (ch.nodeType != 1) continue
-    let path = ch.getAttribute("pm-path")
-    if (!path) {
-      let found = findByPath(ch, n)
-      if (found) return found
-    } else if (+path == n) {
-      return ch
-    }
+  static mapToken(token, mapping) {
+    return new SelectionToken(TextSelection, mapping.map(token.a), mapping.map(token.b))
+  }
+
+  static fromToken(token, doc) {
+    if (!doc.resolve(token.b).parent.isTextblock)
+      return findSelectionNear(doc, token.b)
+    return new TextSelection(doc.resolve(token.a).parent.isTextblock ? token.a : token.b, token.b)
   }
 }
 
-export function resolvePath(parent, path) {
-  let node = parent
-  for (let i = 0; i < path.length; i++) {
-    node = findByPath(node, path[i])
-    if (!node) throw new Error("Failed to resolve path " + path.join("/"))
+// ;; A node selection is a selection that points at a
+// single node. All nodes marked [selectable](#NodeType.selectable)
+// can be the target of a node selection. In such an object, `from`
+// and `to` point directly before and after the selected node.
+export class NodeSelection extends Selection {
+  // :: (number, number, Node)
+  // Create a node selection. Does not verify the validity of its
+  // arguments. Use `ProseMirror.setNodeSelection` for an easier,
+  // error-checking way to create a node selection.
+  constructor(from, to, node) {
+    super()
+    this.from = from
+    this.to = to
+    // :: Node The selected node.
+    this.node = node
   }
-  return node
+
+  get empty() { return false }
+
+  eq(other) {
+    return other instanceof NodeSelection && this.from == other.from
+  }
+
+  map(doc, mapping) {
+    let from = mapping.map(this.from, 1)
+    let to = mapping.map(this.to, -1)
+    let node = doc.nodeAt(from)
+    if (node && to == from + node.nodeSize && node.type.selectable)
+      return new NodeSelection(from, to, node)
+    return findSelectionNear(doc, from)
+  }
+
+  get token() {
+    return new SelectionToken(NodeSelection, this.from, this.to)
+  }
+
+  static mapToken(token, mapping) {
+    return new SelectionToken(TextSelection, mapping.map(token.a, 1), mapping.map(token.b, -1))
+  }
+
+  static fromToken(token, doc) {
+    let node = doc.nodeAt(token.a)
+    if (node && token.b == token.a + node.nodeSize && node.type.selectable)
+      return new NodeSelection(token.a, token.b, node)
+    return findSelectionNear(doc, token.a)
+  }
 }
 
-function findByOffset(node, offset) {
-  function search(node, domOffset) {
-    if (node.nodeType != 1) return
-    let range = node.getAttribute("pm-span")
-    if (range) {
-      let [_, from, to] = /(\d+)-(\d+)/.exec(range)
-      if (+to >= offset)
-        return {node: node, parent: node.parentNode, offset: domOffset,
-                innerOffset: offset - +from}
-    } else {
-      for (let ch = node.firstChild, i = 0; ch; ch = ch.nextSibling, i++) {
-        let result = search(ch, i)
-        if (result) return result
-      }
-    }
+class SelectionToken {
+  constructor(type, a, b) {
+    this.type = type
+    this.a = a
+    this.b = b
   }
-  return search(node)
-}
-
-function leafAt(node, offset) {
-  for (;;) {
-    let child = node.firstChild
-    if (!child) return {node, offset}
-    if (child.nodeType != 1) return {node: child, offset}
-    if (child.hasAttribute("pm-span-offset")) {
-      let nodeOffset = 0
-      for (;;) {
-        let nextSib = child.nextSibling, nextOffset
-        if (!nextSib || (nextOffset = +nextSib.getAttribute("pm-span-offset")) >= offset) break
-        child = nextSib
-        nodeOffset = nextOffset
-      }
-      offset -= nodeOffset
-    }
-    node = child
-  }
-}
-
-/**
- * Get a DOM element at a given position in the document.
- *
- * @param {Node} parent The parent DOM node.
- * @param {Pos} pos     The position in the document.
- * @return {Object}     The DOM node and character offset inside the node.
- */
-function DOMFromPos(parent, pos) {
-  let node = resolvePath(parent, pos.path)
-  let found = findByOffset(node, pos.offset), inner
-  if (!found) return {node: node, offset: 0}
-  if (found.node.hasAttribute("pm-span-atom") || !(inner = leafAt(found.node, found.innerOffset)))
-    return {node: found.parent, offset: found.offset + (found.innerOffset ? 1 : 0)}
-  else
-    return inner
 }
 
 export function hasFocus(pm) {
+  if (document.activeElement != pm.content) return false
   let sel = window.getSelection()
   return sel.rangeCount && contains(pm.content, sel.anchorNode)
 }
 
-/**
- * Given an x,y position on the editor, get the position in the document.
- *
- * @param  {ProseMirror} pm     Editor instance.
- * @param  {Object}      coords The x, y coordinates.
- * @return {Pos}
- */
-export function posAtCoords(pm, coords) {
-  let element = document.elementFromPoint(coords.left, coords.top + 1)
-  if (!contains(pm.content, element)) return Pos.start(pm.doc)
-
-  let offset
-  if (element.childNodes.length == 1 && element.firstChild.nodeType == 3) {
-    element = element.firstChild
-    offset = offsetInTextNode(element, coords)
-  } else {
-    offset = offsetInElement(element, coords)
-  }
-
-  let {pos, inline} = posFromDOM(pm, element, offset)
-  return inline ? pos : moveInline(pm.doc, pos, pos)
-}
-
-/**
- * Given a position in the document model, get a bounding box of the character at
- * that position, relative to the window.
- *
- * @param  {ProseMirror} pm The editor instance.
- * @param  {Pos}         pos
- * @return {Object} The bounding box.
- */
-export function coordsAtPos(pm, pos) {
-  let {node, offset} = DOMFromPos(pm.content, pos)
-  let rect
-  if (node.nodeType == 3 && node.nodeValue) {
-    let range = document.createRange()
-    range.setEnd(node, offset ? offset : offset + 1)
-    range.setStart(node, offset ? offset - 1 : offset)
-    rect = range.getBoundingClientRect()
-  } else if (node.nodeType == 1 && node.firstChild) {
-    rect = node.childNodes[offset ? offset - 1 : offset].getBoundingClientRect()
-    // BR nodes are likely to return a useless empty rectangle. Try
-    // the node on the other side in that case.
-    if (rect.left == rect.right && offset && offset < node.childNodes.length) {
-      let otherRect = node.childNodes[offset].getBoundingClientRect()
-      if (otherRect.left != otherRect.right)
-        rect = {top: otherRect.top, bottom: otherRect.bottom, right: otherRect.left}
+// Try to find a selection inside the given node. `pos` points at the
+// position where the search starts. When `text` is true, only return
+// text selections.
+function findSelectionIn(node, pos, index, dir, text) {
+  for (let i = index - (dir > 0 ? 0 : 1); dir > 0 ? i < node.childCount : i >= 0; i += dir) {
+    let child = node.child(i)
+    if (child.isTextblock) return new TextSelection(pos + dir)
+    if (child.type.contains) {
+      let inner = findSelectionIn(child, pos + dir, dir < 0 ? child.childCount : 0, dir, text)
+      if (inner) return inner
+    } else if (!text && child.type.selectable) {
+      return new NodeSelection(pos - (dir < 0 ? child.nodeSize : 0),
+                               pos + (dir > 0 ? child.nodeSize : 0), child)
     }
-  } else {
-    rect = node.getBoundingClientRect()
+    pos += child.nodeSize * dir
   }
-  let x = offset ? rect.right : rect.left
-  return {top: rect.top, bottom: rect.bottom, left: x, right: x}
 }
 
-const scrollMargin = 5
+// FIXME we'll need some awareness of text direction when scanning for selections
 
-export function scrollIntoView(pm, pos) {
-  if (!pos) pos = pm.sel.range.head
+// Create a selection which is moved relative to a position in a
+// given direction. When a selection isn't found at the given position,
+// walks up the document tree one level and one step in the
+// desired direction.
+export function findSelectionFrom(doc, pos, dir, text) {
+  let $pos = doc.resolve(pos)
+  let inner = $pos.parent.isTextblock ? new TextSelection(pos)
+      : findSelectionIn($pos.parent, pos, $pos.index($pos.depth), dir, text)
+  if (inner) return inner
+
+  for (let depth = $pos.depth - 1; depth >= 0; depth--) {
+    let found = dir < 0
+        ? findSelectionIn($pos.node(depth), $pos.before(depth + 1), $pos.index(depth), dir, text)
+        : findSelectionIn($pos.node(depth), $pos.after(depth + 1), $pos.index(depth) + 1, dir, text)
+    if (found) return found
+  }
+}
+
+export function findSelectionNear(doc, pos, bias = 1, text) {
+  let result = findSelectionFrom(doc, pos, bias, text) || findSelectionFrom(doc, pos, -bias, text)
+  if (!result) throw new RangeError("Searching for selection in invalid document " + doc)
+  return result
+}
+
+// Find the selection closest to the start of the given node. `pos`,
+// if given, should point at the start of the node's content.
+export function findSelectionAtStart(node, text) {
+  return findSelectionIn(node, 0, 0, 1, text)
+}
+
+// Find the selection closest to the end of the given node.
+export function findSelectionAtEnd(node, text) {
+  return findSelectionIn(node, node.content.size, node.childCount, -1, text)
+}
+
+// : (ProseMirror, number, number)
+// Whether vertical position motion in a given direction
+// from a position would leave a text block.
+export function verticalMotionLeavesTextblock(pm, pos, dir) {
+  let $pos = pm.doc.resolve(pos)
+  let dom = DOMAfterPos(pm, $pos.before($pos.depth))
   let coords = coordsAtPos(pm, pos)
-  for (let parent = pm.content;; parent = parent.parentNode) {
-    let atBody = parent == document.body
-    let rect = atBody ? windowRect() : parent.getBoundingClientRect()
-    if (coords.top < rect.top)
-      parent.scrollTop -= rect.top - coords.top + scrollMargin
-    else if (coords.bottom > rect.bottom)
-      parent.scrollTop += coords.bottom - rect.bottom + scrollMargin
-    if (coords.left < rect.left)
-      parent.scrollLeft -= rect.left - coords.left + scrollMargin
-    else if (coords.right > rect.right)
-      parent.scrollLeft += coords.right - rect.right + scrollMargin
-    if (atBody) break
-  }
-}
-
-function offsetInRects(coords, rects) {
-  let {top: y, left: x} = coords
-  let minY = 1e5, minX = 1e5, offset = 0
-  for (let i = 0; i < rects.length; i++) {
-    let rect = rects[i]
-    if (!rect || (rect.top == 0 && rect.bottom == 0)) continue
-    let dY = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0
-    if (dY > minY) continue
-    if (dY < minY) { minY = dY; minX = 1e5 }
-    let dX = x < rect.left ? rect.left - x : x > rect.right ? x - rect.right : 0
-    if (dX < minX) {
-      minX = dX
-      offset = Math.abs(x - rect.left) < Math.abs(x - rect.right) ? i : i + 1
+  for (let child = dom.firstChild; child; child = child.nextSibling) {
+    if (child.nodeType != 1) continue
+    let boxes = child.getClientRects()
+    for (let i = 0; i < boxes.length; i++) {
+      let box = boxes[i]
+      if (dir < 0 ? box.bottom < coords.top : box.top > coords.bottom)
+        return false
     }
   }
-  return offset
-}
-
-function offsetInTextNode(text, coords) {
-  let len = text.nodeValue.length
-  let range = document.createRange()
-  let rects = []
-  for (let i = 0; i < len; i++) {
-    range.setEnd(text, i + 1)
-    range.setStart(text, i)
-    rects.push(range.getBoundingClientRect())
-  }
-  return offsetInRects(coords, rects)
-}
-
-function offsetInElement(element, coords) {
-  let rects = []
-  for (let child = element.firstChild; child; child = child.nextSibling)
-    rects.push(child.getBoundingClientRect())
-  return offsetInRects(coords, rects)
+  return true
 }
