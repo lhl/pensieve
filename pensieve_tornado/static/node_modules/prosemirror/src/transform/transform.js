@@ -1,47 +1,55 @@
+import {ProseMirrorError} from "../util/error"
+
 import {Step} from "./step"
-import {nullMap, MapResult} from "./map"
+import {mapThrough, mapThroughResult} from "./map"
 
-export class TransformResult {
-  constructor(doc, map = nullMap) {
-    this.doc = doc
-    this.map = map
-  }
-}
+export class TransformError extends ProseMirrorError {}
 
+// ;; A change to a document often consists of a series of
+// [steps](#Step). This class provides a convenience abstraction to
+// build up and track such an array of steps. A `Transform` object
+// implements `Mappable`.
+//
+// The high-level transforming methods return the `Transform` object
+// itself, so that they can be chained.
 export class Transform {
+  // :: (Node)
+  // Create a transformation that starts with the given document.
   constructor(doc) {
-    this.docs = [doc]
+    this.doc = doc
+    this.docs = []
     this.steps = []
     this.maps = []
   }
 
-  get doc() {
-    return this.docs[this.docs.length - 1]
+  get before() { return this.docs.length ? this.docs[0] : this.doc }
+
+  // :: (Step) → Transform
+  step(step, from, to, param) {
+    if (typeof step == "string") step = new Step(step, from, to, param)
+    let result = this.maybeStep(step)
+    if (result.failed) throw new TransformError(result.failed)
+    return this
   }
 
-  get before() {
-    return this.docs[0]
-  }
-
-  step(step, from, to, pos, param) {
-    if (typeof step == "string")
-      step = new Step(step, from, to, pos, param)
+  maybeStep(step) {
     let result = step.apply(this.doc)
-    if (result) {
+    if (!result.failed) {
+      this.docs.push(this.doc)
       this.steps.push(step)
-      this.maps.push(result.map)
-      this.docs.push(result.doc)
+      this.maps.push(step.posMap())
+      this.doc = result.doc
     }
     return result
   }
 
-  map(pos, bias) {
-    let deleted = false
-    for (let i = 0; i < this.maps.length; i++) {
-      let result = this.maps[i].map(pos, bias)
-      pos = result.pos
-      if (result.deleted) deleted = true
-    }
-    return new MapResult(pos, deleted)
-  }
+  // :: (number, ?number) → MapResult
+  // Map a position through the whole transformation (all the position
+  // maps in [`maps`](#Transform.maps)), and return the result.
+  mapResult(pos, bias) { return mapThroughResult(this.maps, pos, bias) }
+
+  // :: (number, ?number) → number
+  // Map a position through the whole transformation, and return the
+  // mapped position.
+  map(pos, bias) { return mapThrough(this.maps, pos, bias) }
 }

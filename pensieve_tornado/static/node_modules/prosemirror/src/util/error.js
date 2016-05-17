@@ -1,21 +1,23 @@
-export class ProseMirrorError extends Error {
-  constructor(message) {
-    super(message)
-    if (this.message != message) {
-      this.message = message
-      if (Error.captureStackTrace) Error.captureStackTrace(this, this.name)
-      else this.stack = (new Error(message)).stack
-    }
-  }
-
-  get name() {
-    return this.constructor.name || functionName(this.constructor) || "ProseMirrorError"
-  }
-
-  static raise(message) {
-    throw new this(message)
+// ;; Superclass for ProseMirror-related errors. Does some magic to
+// make it safely subclassable even on ES5 runtimes.
+export function ProseMirrorError(message) {
+  Error.call(this, message)
+  if (this.message != message) {
+    this.message = message
+    if (Error.captureStackTrace) Error.captureStackTrace(this, this.name)
+    else this.stack = (new Error(message)).stack
   }
 }
+
+ProseMirrorError.prototype = Object.create(Error.prototype)
+
+ProseMirrorError.prototype.constructor = ProseMirrorError
+
+Object.defineProperty(ProseMirrorError.prototype, "name", {
+  get() {
+    return this.constructor.name || functionName(this.constructor) || "ProseMirrorError"
+  }
+})
 
 function functionName(f) {
   let match = /^function (\w+)/.exec(f.toString())

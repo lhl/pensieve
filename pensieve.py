@@ -15,7 +15,7 @@ from pyssb import *
 from pensieve_tornado.app import *
 
 
-ssb_config = {'name':'evernote','title':'Evernote','url':'https://www.evernote.com/Home.action'}
+ssb_config = {'name':'pensieve','title':'Pensieve','url':'http://localhost:11111'}
 
 class PensieveSSB(SSBWindow):
   def __init__(self, ssb_config):

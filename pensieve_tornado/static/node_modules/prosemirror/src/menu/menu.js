@@ -1,366 +1,512 @@
-import {Tooltip} from "./tooltip"
-import {elt} from "../dom"
-import insertCSS from "insert-css"
-import {defineParamHandler} from "../edit"
+import {elt, insertCSS} from "../dom"
 import sortedInsert from "../util/sortedinsert"
+import {copyObj} from "../util/obj"
 
-export class Menu {
-  constructor(pm, display) {
-    this.display = display
-    this.stack = []
-    this.pm = pm
+import {getIcon} from "./icons"
+
+// !! This module defines a number of building blocks for ProseMirror
+// menus, as consumed by the [`menubar`](#menu/menubar) and
+// [`tooltipmenu`](#menu/tooltipmenu) modules.
+
+// ;; #path=MenuElement #kind=interface
+// The types defined in this module aren't the only thing you can
+// display in your menu. Anything that conforms to this interface can
+// be put into a menu structure.
+
+// :: (pm: ProseMirror) → ?DOMNode #path=MenuElement.render
+// Render the element for display in the menu. Returning `null` can be
+// used to signal that this element shouldn't be displayed for the
+// given editor state.
+
+// ;; #path=MenuGroup #kind=interface
+// A menu group represents a group of things that may appear in a
+// menu. It may be either a `MenuElement`, a `MenuCommandGroup`, or an
+// array of such values. Can be reduced to an array of `MenuElement`s
+// using `resolveGroup`.
+
+const prefix = "ProseMirror-menu"
+
+function title(pm, command) {
+  if (!command.label) return null
+  let label = pm.translate(command.label)
+  let key = command.name && pm.keyForCommand(command.name)
+  return key ? label + " (" + key + ")" : label
+}
+
+// ;; Wraps a [command](#Command) so that it can be rendered in a
+// menu.
+export class MenuCommand {
+  // :: (union<Command, string>, MenuCommandSpec)
+  constructor(command, options) {
+    this.command_ = command
+    this.options = options
   }
 
-  show(content, displayInfo) {
-    this.stack.length = 0
-    this.enter(content, displayInfo)
+  // :: (ProseMirror) → Command
+  // Retrieve the command associated with this object.
+  command(pm) {
+    return typeof this.command_ == "string" ? pm.commands[this.command_] : this.command_
   }
 
-  reset() {
-    this.stack.length = 0
-    this.display.reset()
+  get commandName() {
+    return typeof this.command_ === "string" ? this.command_.command : this.command_.name
   }
 
-  enter(content, displayInfo) {
-    let pieces = [], explore = value => {
-      if (Array.isArray(value)) {
-        for (let i = 0; i < value.length; i++) explore(value[i])
-        pieces.push(separator)
-      } else if (!value.select || value.select(this.pm)) {
-        pieces.push(value)
-      }
+  // :: (ProseMirror) → DOMNode
+  // Renders the command according to its [display
+  // spec](#MenuCommandSpec.display), and adds an event handler which
+  // executes the command when the representation is clicked.
+  render(pm) {
+    let cmd = this.command(pm), disabled = false
+    if (!cmd) return
+    if (this.options.select != "ignore" && !cmd.select(pm)) {
+      if (this.options.select == null || this.options.select == "hide") return null
+      else if (this.options.select == "disable") disabled = true
     }
-    explore(content)
-    // Remove superfluous separators
-    for (let i = 0; i < pieces.length; i++)
-      if (pieces[i] == separator && (i == 0 || i == pieces.length - 1 || pieces[i + 1] == separator))
-        pieces.splice(i--, 1)
 
-    if (!pieces) return this.display.clear()
+    let disp = this.options.display
+    if (!disp) throw new RangeError("No display style defined for menu command " + cmd.name)
 
-    this.stack.push(pieces)
-    this.draw(displayInfo)
-  }
-
-  get active() {
-    return this.stack.length > 1
-  }
-
-  draw(displayInfo) {
-    let cur = this.stack[this.stack.length - 1]
-    let rendered = elt("div", {class: "ProseMirror-menu"}, cur.map(item => renderItem(item, this)))
-    if (this.stack.length > 1)
-      this.display.enter(rendered, () => this.leave(), displayInfo)
-    else
-      this.display.show(rendered, displayInfo)
-  }
-
-  leave() {
-    this.stack.pop()
-    if (this.stack.length)
-      this.draw()
-    else
-      this.display.reset()
-  }
-}
-
-export class TooltipDisplay {
-  constructor(tooltip, resetFunc) {
-    this.tooltip = tooltip
-    this.resetFunc = resetFunc
-  }
-
-  clear() {
-    this.tooltip.close()
-  }
-
-  reset() {
-    if (this.resetFunc) this.resetFunc()
-    else this.clear()
-  }
-
-  show(dom, info) {
-    this.tooltip.open(dom, info)
-  }
-
-  enter(dom, back, info) {
-    let button = elt("div", {class: "ProseMirror-tooltip-back", title: "Back"})
-    button.addEventListener("mousedown", e => {
-      e.preventDefault(); e.stopPropagation()
-      back()
-    })
-    this.show(elt("div", {class: "ProseMirror-tooltip-back-wrapper"}, dom, button), info)
-  }
-}
-
-function renderIcon(command, menu) {
-  let iconClass = "ProseMirror-menuicon"
-  if (command.active(menu.pm)) iconClass += " ProseMirror-menuicon-active"
-  let dom = elt("div", {class: iconClass, title: command.label},
-                elt("span", {class: "ProseMirror-menuicon ProseMirror-icon-" + command.name}))
-  dom.addEventListener("mousedown", e => {
-    e.preventDefault(); e.stopPropagation()
-    if (command.params.length) {
-      menu.enter(readParams(command))
+    let dom
+    if (disp.render) {
+      dom = disp.render(cmd, pm)
+    } else if (disp.type == "icon") {
+      dom = getIcon(cmd.name, disp)
+      if (!disabled && cmd.active(pm)) dom.classList.add(prefix + "-active")
+    } else if (disp.type == "label") {
+      let label = pm.translate(disp.label || cmd.spec.label)
+      dom = elt("div", null, label)
     } else {
-      command.exec(menu.pm)
-      menu.reset()
+      throw new RangeError("Unsupported command display style: " + disp.type)
     }
-  })
-  return dom
-}
-
-function renderSelect(item, menu) {
-  let param = item.params[0]
-  let value = !param.default ? null : param.default.call ? param.default(menu.pm) : param.default
-
-  let dom = elt("div", {class: "ProseMirror-select ProseMirror-select-command-" + item.name, title: item.label},
-                !value ? (param.defaultLabel || "Select...") : value.label)
-  dom.addEventListener("mousedown", e => {
-    e.preventDefault(); e.stopPropagation()
-    showSelectMenu(menu.pm, item, dom)
-  })
-  return dom
-}
-
-function showSelectMenu(pm, item, dom) {
-  let param = item.params[0]
-  let options = param.options.call ? param.options(pm) : param.options
-  let menu = elt("div", {class: "ProseMirror-select-menu"}, options.map(o => {
-    let dom = elt("div", null, o.label)
+    dom.setAttribute("title", title(pm, cmd))
+    if (this.options.class) dom.classList.add(this.options.class)
+    if (disabled) dom.classList.add(prefix + "-disabled")
+    if (this.options.css) dom.style.cssText += this.options.css
     dom.addEventListener("mousedown", e => {
-      e.preventDefault()
-      item.exec(pm, [o.value])
-      finish()
+      e.preventDefault(); e.stopPropagation()
+      pm.signal("interaction")
+      cmd.exec(pm, null, dom)
+    })
+    dom.setAttribute("data-command", this.commandName)
+    return dom
+  }
+}
+
+// ;; Represents a [group](#MenuCommandSpec.group) of commands, as
+// they appear in the editor's schema.
+export class MenuCommandGroup {
+  // :: (string, ?MenuCommandSpec)
+  // Create a group for the given group name, optionally adding or
+  // overriding fields in the commands' [specs](#MenuCommandSpec).
+  constructor(name, options) {
+    this.name = name
+    this.options = options
+  }
+
+  collect(pm) {
+    let result = []
+    for (let name in pm.commands) {
+      let cmd = pm.commands[name], spec = cmd.spec.menu
+      if (spec && spec.group == this.name)
+        sortedInsert(result, {cmd, rank: spec.rank == null ? 50 : spec.rank},
+                     (a, b) => a.rank - b.rank)
+    }
+    return result.map(o => {
+      let spec = o.cmd.spec.menu
+      if (this.options) spec = copyObj(this.options, copyObj(spec))
+      return new MenuCommand(o.cmd, spec)
+    })
+  }
+
+  // :: (ProseMirror) → [MenuCommand]
+  // Get the group of matching commands in the given editor.
+  get(pm) {
+    let groups = pm.mod.menuGroups || this.startGroups(pm)
+    return groups[this.name] || (groups[this.name] = this.collect(pm))
+  }
+
+  startGroups(pm) {
+    let clear = () => {
+      pm.mod.menuGroups = null
+      pm.off("commandsChanging", clear)
+    }
+    pm.on("commandsChanging", clear)
+    return pm.mod.menuGroups = Object.create(null)
+  }
+}
+
+// ;; A drop-down menu, displayed as a label with a downwards-pointing
+// triangle to the right of it.
+export class Dropdown {
+  // :: (Object, MenuGroup)
+  // Create a dropdown wrapping the given group. Options may include
+  // the following properties:
+  //
+  // **`label`**`: string`
+  //   : The label to show on the drop-down control. When
+  //     `activeLabel` is also given, this one is used as a
+  //     fallback.
+  //
+  // **`activeLabel`**`: bool`
+  //   : Instead of showing a fixed label, enabling this causes the
+  //     element to search through its content, looking for an
+  //     [active](#CommandSpec.active) command. If one is found, its
+  //     [`activeLabel`](#MenuCommandSpec.activeLabel) property is
+  //     shown as the drop-down's label.
+  //
+  // **`title`**`: string`
+  //   : Sets the
+  //     [`title`](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/title)
+  //     attribute given to the menu control.
+  //
+  // **`class`**`: string`
+  //   : When given, adds an extra CSS class to the menu control.
+  constructor(options, content) {
+    this.options = options || {}
+    this.content = content
+  }
+
+  // :: (ProseMirror) → DOMNode
+  // Returns a node showing the collapsed menu, which expands when clicked.
+  render(pm) {
+    let items = renderDropdownItems(resolveGroup(pm, this.content), pm)
+    if (!items.length) return
+
+    let label = (this.options.activeLabel && this.findActiveIn(this, pm)) || this.options.label
+    label = pm.translate(label)
+    let dom = elt("div", {class: prefix + "-dropdown " + (this.options.class || ""),
+                          style: this.options.css,
+                          title: this.options.title}, label)
+    let open = null
+    dom.addEventListener("mousedown", e => {
+      e.preventDefault(); e.stopPropagation()
+      if (open && open()) open = null
+      else open = this.expand(pm, dom, items)
     })
     return dom
-  }))
-  let pos = dom.getBoundingClientRect(), box = pm.wrapper.getBoundingClientRect()
-  menu.style.left = (pos.left - box.left - 2) + "px"
-  menu.style.top = (pos.top - box.top - 2) + "px"
-
-  let done = false
-  function finish() {
-    if (done) return
-    done = true
-    document.body.removeEventListener("mousedown", finish)
-    document.body.removeEventListener("keydown", finish)
-    pm.wrapper.removeChild(menu)
   }
-  document.body.addEventListener("mousedown", finish)
-  document.body.addEventListener("keydown", finish)
-  pm.wrapper.appendChild(menu)
-}
 
-function renderItem(item, menu) {
-  if (item.display == "icon") return renderIcon(item, menu)
-  else if (item.display == "select") return renderSelect(item, menu)
-  else if (!item.display) throw new Error("Command " + item.name + " can not be shown in a menu")
-  else return item.display(menu)
-}
+  select(pm) {
+    return resolveGroup(pm, this.content).some(e => e.select(pm))
+  }
 
-function buildParamForm(command) {
-  let fields = command.params.map((param, i) => {
-    let field, name = "field_" + i
-    if (param.type == "text")
-      field = elt("input", {name, type: "text", placeholder: param.name, size: 40, autocomplete: "off"})
-    else // FIXME more types
-      throw new Error("Unsupported parameter type: " + param.type)
-    return elt("div", null, field)
-  })
-  return elt("form", null, fields)
-}
+  expand(pm, dom, items) {
+    let box = dom.getBoundingClientRect(), outer = pm.wrapper.getBoundingClientRect()
+    let menuDOM = elt("div", {class: prefix + "-dropdown-menu " + (this.options.class || ""),
+                              style: "left: " + (box.left - outer.left) + "px; top: " + (box.bottom - outer.top) + "px"},
+                      items)
 
-function gatherParams(command, form, pm) {
-  let bad = false
-  let params = command.params.map((param, i) => {
-    let val = form.elements["field_" + i].value
-    if (val) return val
-    if (param.default == null) bad = true
-    else return param.default.call ? param.default(pm) : param.default
-  })
-  return bad ? null : params
-}
-
-function paramForm(pm, command, callback) {
-  let form = buildParamForm(command), done = false
-
-  let finish = result => {
-    if (!done) {
+    let done = false
+    function finish() {
+      if (done) return
       done = true
-      callback(result)
+      pm.off("interaction", finish)
+      pm.wrapper.removeChild(menuDOM)
+      return true
     }
+    pm.signal("interaction")
+    pm.wrapper.appendChild(menuDOM)
+    pm.on("interaction", finish)
+    return finish
   }
 
-  let submit = () => {
-    // FIXME error messages
-    finish(gatherParams(command, form, pm))
-  }
-  form.addEventListener("submit", e => {
-    e.preventDefault()
-    submit()
-  })
-  form.addEventListener("keydown", e => {
-    if (e.keyCode == 27) {
-      finish(null)
-    } else if (e.keyCode == 13 && !(e.ctrlKey || e.metaKey || e.shiftKey)) {
-      e.preventDefault()
-      submit()
-    }
-  })
-  // FIXME too hacky?
-  setTimeout(() => {
-    let input = form.querySelector("input, textarea")
-    if (input) input.focus()
-  }, 20)
-
-  return form
-}
-
-export function readParams(command) {
-  return {display(menu) {
-    return paramForm(menu.pm, command, params => {
-      menu.pm.focus()
-      if (params) {
-        command.exec(menu.pm, params)
-        menu.reset()
-      } else {
-        menu.leave()
+  findActiveIn(element, pm) {
+    let items = resolveGroup(pm, element.content)
+    for (let i = 0; i < items.length; i++) {
+      let cur = items[i]
+      if (cur instanceof MenuCommand) {
+        let active = cur.command(pm).active(pm)
+        if (active) return cur.options.activeLabel
+      } else if (cur instanceof DropdownSubmenu) {
+        let found = this.findActiveIn(cur, pm)
+        if (found) return found
       }
-    })
-  }}
-}
-
-const separator = {
-  display() { return elt("div", {class: "ProseMirror-menuseparator"}) }
-}
-
-export function commandGroups(pm, ...names) {
-  return names.map(group => {
-    let found = []
-    for (let name in pm.commands) {
-      let cmd = pm.commands[name]
-      if (cmd.info.menuGroup && cmd.info.menuGroup == group)
-        sortedInsert(found, cmd, (a, b) => (a.info.menuRank || 50) - (b.info.menuRank || 50))
     }
-    return found
-  })
+  }
 }
 
-// Awkward hack to force Chrome to initialize the font and not return
-// incorrect size information the first time it is used.
-
-let forced = false
-export function forceFontLoad(pm) {
-  if (forced) return
-  forced = true
-
-  let node = pm.wrapper.appendChild(elt("div", {class: "ProseMirror-menuicon ProseMirror-icon-strong",
-                                                style: "visibility: hidden; position: absolute"}))
-  window.setTimeout(() => pm.wrapper.removeChild(node), 20)
+function renderDropdownItems(items, pm) {
+  let rendered = []
+  for (let i = 0; i < items.length; i++) {
+    let inner = items[i].render(pm)
+    if (inner) rendered.push(elt("div", {class: prefix + "-dropdown-item"}, inner))
+  }
+  return rendered
 }
 
-function tooltipParamHandler(pm, command, callback) {
-  let tooltip = new Tooltip(pm, "center")
-  tooltip.open(paramForm(pm, command, params => {
-    pm.focus()
-    tooltip.close()
-    callback(params)
-  }))
+// ;; Represents a submenu wrapping a group of items that start hidden
+// and expand to the right when hovered over or tapped.
+export class DropdownSubmenu {
+  // :: (Object, MenuGroup)
+  // Creates a submenu for the given group of menu elements. The
+  // following options are recognized:
+  //
+  // **`label`**`: string`
+  //   : The label to show on the submenu.
+  constructor(options, content) {
+    this.options = options || {}
+    this.content = content
+  }
+
+  // :: (ProseMirror) → DOMNode
+  // Renders the submenu.
+  render(pm) {
+    let items = renderDropdownItems(resolveGroup(pm, this.content), pm)
+    if (!items.length) return
+
+    let label = elt("div", {class: prefix + "-submenu-label"}, pm.translate(this.options.label))
+    let wrap = elt("div", {class: prefix + "-submenu-wrap"}, label,
+                   elt("div", {class: prefix + "-submenu"}, items))
+    label.addEventListener("mousedown", e => {
+      e.preventDefault(); e.stopPropagation()
+      wrap.classList.toggle(prefix + "-submenu-wrap-active")
+    })
+    return wrap
+  }
 }
 
-defineParamHandler("default", tooltipParamHandler)
-defineParamHandler("tooltip", tooltipParamHandler)
+// :: (ProseMirror, MenuGroup) → [MenuElement]
+// Resolve the given `MenuGroup` into a flat array of renderable
+// elements.
+export function resolveGroup(pm, content) {
+  let result, isArray = Array.isArray(content)
+  for (let i = 0; i < (isArray ? content.length : 1); i++) {
+    let cur = isArray ? content[i] : content
+    if (cur instanceof MenuCommandGroup) {
+      let elts = cur.get(pm)
+      if (!isArray || content.length == 1) return elts
+      else result = (result || content.slice(0, i)).concat(elts)
+    } else if (result) {
+      result.push(cur)
+    }
+  }
+  return result || (isArray ? content : [content])
+}
 
-// FIXME check for obsolete styles
+// :: (ProseMirror, [MenuGroup]) → ?DOMFragment
+// Render the given menu groups into a document fragment, placing
+// separators between them (and ensuring no superfluous separators
+// appear when some of the groups turn out to be empty).
+export function renderGrouped(pm, content) {
+  let result = document.createDocumentFragment(), needSep = false
+  for (let i = 0; i < content.length; i++) {
+    let items = resolveGroup(pm, content[i]), added = false
+    for (let j = 0; j < items.length; j++) {
+      let rendered = items[j].render(pm)
+      if (rendered) {
+        if (!added && needSep) result.appendChild(separator())
+        result.appendChild(elt("span", {class: prefix + "item"}, rendered))
+        added = true
+      }
+    }
+    if (added) needSep = true
+  }
+  return result
+}
+
+function separator() {
+  return elt("span", {class: prefix + "separator"})
+}
+
+// ;; #path=CommandSpec #kind=interface #noAnchor
+// The `menu` module gives meaning to an additional property in
+// [command specs](#CommandSpec).
+
+// :: MenuCommandSpec #path=CommandSpec.menu
+// Adds the command to a menu group, so that it is picked up by
+// `MenuCommandGroup` objects with the matching
+// [name](#MenuCommandSpec.name).
+
+// ;; #path=MenuCommandSpec #kind=interface
+// Configures the way a command shows up in a menu, when wrapped in a
+// `MenuCommand`.
+
+// :: string #path=MenuCommandSpec.group
+// Identifies the group this command should be added to (for example
+// `"inline"` or `"block"`). Only meaningful when associated with a
+// `CommandSpec` (as opposed to passed directly to `MenuCommand`).
+
+// :: number #path=MenuCommandSpec.rank
+// Determines the command's position in its group (lower ranks come
+// first). Only meaningful in a `CommandSpec`.
+
+// :: Object #path=MenuCommandSpec.display
+// Determines how the command is shown in the menu. It may have either
+// a `type` property containing one of the strings shown below, or a
+// `render` property that, when called with the command and a
+// `ProseMirror` instance as arguments, returns a DOM node
+// representing the command's menu representation.
+//
+// **`"icon"`**
+//   : Show the command as an icon. The object may have `{path, width,
+//     height}` properties, where `path` is an [SVG path
+//     spec](https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/d),
+//     and `width` and `height` provide the viewbox in which that path
+//     exists. Alternatively, it may have a `text` property specifying
+//     a string of text that makes up the icon, with an optional
+//     `style` property giving additional CSS styling for the text,
+//     _or_ a `dom` property containing a DOM node.
+//
+// **`"label"`**
+//   : Render the command as a label. Mostly useful for commands
+//     wrapped in a [drop-down](#Dropdown) or similar menu. The object
+//     should have a `label` property providing the text to display.
+
+// :: string #path=MenuCommandSpec.activeLabel
+// When used in a `Dropdown` with `activeLabel` enabled, this should
+// provide the text shown when the command is active.
+
+// :: string #path=MenuCommandSpec.select
+// Controls whether the command's [`select`](#CommandSpec.select)
+// method has influence on its appearance. When set to `"hide"`, or
+// not given, the command is hidden when it is not selectable. When
+// set to `"ignore"`, the `select` method is not called. When set to
+// `"disable"`, the command is shown in disabled form when `select`
+// returns false.
+
+// :: string #path=MenuCommandSpec.class
+// Optionally adds a CSS class to the command's DOM representation.
+
+// :: string #path=MenuCommandSpec.css
+// Optionally adds a string of inline CSS to the command's DOM
+// representation.
+
+// :: MenuCommandGroup
+// The inline command group.
+export const inlineGroup = new MenuCommandGroup("inline")
+
+// :: Dropdown
+// The default insert dropdown menu.
+export const insertMenu = new Dropdown({label: "Insert"}, new MenuCommandGroup("insert"))
+
+// :: Dropdown
+// The default textblock type menu.
+export const textblockMenu = new Dropdown(
+  {label: "Type..", displayActive: true, class: "ProseMirror-textblock-dropdown"},
+  [new MenuCommandGroup("textblock"),
+   new DropdownSubmenu({label: "Heading"}, new MenuCommandGroup("textblockHeading"))]
+)
+
+// :: MenuCommandGroup
+// The block command group.
+export const blockGroup = new MenuCommandGroup("block")
+
+// :: MenuCommandGroup
+// The history command group.
+export const historyGroup = new MenuCommandGroup("history")
+
 insertCSS(`
 
-.ProseMirror-menu {
+.ProseMirror-textblock-dropdown {
+  min-width: 3em;
+}
+
+.${prefix} {
   margin: 0 -4px;
   line-height: 1;
-  white-space: pre;
+}
+
+.ProseMirror-tooltip .${prefix} {
   width: -webkit-fit-content;
   width: fit-content;
+  white-space: pre;
 }
 
-.ProseMirror-tooltip-back-wrapper {
-  padding-left: 12px;
-}
-.ProseMirror-tooltip-back {
-  position: absolute;
-  top: 5px; left: 5px;
-  cursor: pointer;
-}
-.ProseMirror-tooltip-back:after {
-  content: "«";
-}
-
-.ProseMirror-menuicon {
+.${prefix}item {
+  margin-right: 3px;
   display: inline-block;
-  padding: 1px 4px;
-  margin: 0 2px;
-  cursor: pointer;
-  text-rendering: auto;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  vertical-align: middle;
 }
 
-.ProseMirror-menuicon-active {
-  background: #666;
+.${prefix}separator {
+  border-right: 1px solid #ddd;
+  margin-right: 3px;
+}
+
+.${prefix}-dropdown, .${prefix}-dropdown-menu {
+  font-size: 90%;
+  white-space: nowrap;
+}
+
+.${prefix}-dropdown {
+  padding: 1px 14px 1px 4px;
+  display: inline-block;
+  vertical-align: 1px;
+  position: relative;
+  cursor: pointer;
+}
+
+.${prefix}-dropdown:after {
+  content: "";
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid currentColor;
+  opacity: .6;
+  position: absolute;
+  right: 2px;
+  top: calc(50% - 2px);
+}
+
+.${prefix}-dropdown-menu, .${prefix}-submenu {
+  position: absolute;
+  background: white;
+  color: #666;
+  border: 1px solid #aaa;
+  padding: 2px;
+}
+
+.${prefix}-dropdown-menu {
+  z-index: 15;
+  min-width: 6em;
+}
+
+.${prefix}-dropdown-item {
+  cursor: pointer;
+  padding: 2px 8px 2px 4px;
+}
+
+.${prefix}-dropdown-item:hover {
+  background: #f2f2f2;
+}
+
+.${prefix}-submenu-wrap {
+  position: relative;
+  margin-right: -4px;
+}
+
+.${prefix}-submenu-label:after {
+  content: "";
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 4px solid currentColor;
+  opacity: .6;
+  position: absolute;
+  right: 4px;
+  top: calc(50% - 4px);
+}
+
+.${prefix}-submenu {
+  display: none;
+  min-width: 4em;
+  left: 100%;
+  top: -3px;
+}
+
+.${prefix}-active {
+  background: #eee;
   border-radius: 4px;
 }
 
-.ProseMirror-menuseparator {
-  display: inline-block;
-}
-.ProseMirror-menuseparator:after {
-  content: "︙";
-  opacity: 0.5;
-  padding: 0 4px;
-  vertical-align: middle;
+.${prefix}-active {
+  background: #eee;
+  border-radius: 4px;
 }
 
-.ProseMirror-select, .ProseMirror-select-menu {
-  border: 1px solid #777;
-  border-radius: 3px;
-  font-size: 90%;
+.${prefix}-disabled {
+  opacity: .3;
 }
 
-.ProseMirror-select {
-  padding: 1px 12px 1px 4px;
-  display: inline-block;
-  vertical-align: middle;
-  position: relative;
-  cursor: pointer;
-  margin: 0 4px;
+.${prefix}-submenu-wrap:hover .${prefix}-submenu, .${prefix}-submenu-wrap-active .${prefix}-submenu {
+  display: block;
 }
-
-.ProseMirror-select-command-textblockType {
-  min-width: 3.2em;
-}
-
-.ProseMirror-select:after {
-  content: "▿";
-  color: #777;
-  position: absolute;
-  right: 4px;
-}
-
-.ProseMirror-select-menu {
-  position: absolute;
-  background: #444;
-  color: white;
-  padding: 2px 2px;
-  z-index: 5;
-}
-.ProseMirror-select-menu div {
-  cursor: pointer;
-  padding: 0 1em 0 2px;
-}
-.ProseMirror-select-menu div:hover {
-  background: #777;
-}
-
 `)

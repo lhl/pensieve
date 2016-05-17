@@ -1,60 +1,74 @@
-import {Pos} from "../model"
-import {toDOM, renderNodeToDOM} from "../serialize/dom"
-
+import {toDOM, nodeToDOM} from "../format"
 import {elt} from "../dom"
 
-const nonEditable = {html_block: true, html_tag: true, horizontal_rule: true}
+import {DIRTY_REDRAW} from "./main"
+import {childContainer} from "./dompos"
 
-function options(path, ranges) {
+function options(ranges) {
   return {
+    pos: 0,
+    preRenderContent() { this.pos++ },
+    postRenderContent() { this.pos++ },
+
     onRender(node, dom, offset) {
-      if (!node.isInline && offset != null)
-        dom.setAttribute("pm-path", offset)
-      if (nonEditable.hasOwnProperty(node.type.name))
-        dom.contentEditable = false
+      if (node.isBlock) {
+        if (offset != null)
+          dom.setAttribute("pm-offset", offset)
+        dom.setAttribute("pm-size", node.nodeSize)
+        if (node.isTextblock)
+          adjustTrailingHacks(dom, node)
+        if (dom.contentEditable == "false")
+          dom = elt("div", null, dom)
+        if (!node.type.contains) this.pos++
+      }
+
       return dom
     },
+    onContainer(node) {
+      node.setAttribute("pm-container", true)
+    },
+    // : (Node, DOMNode, number) → DOMNode
     renderInlineFlat(node, dom, offset) {
-      ranges.advanceTo(new Pos(path, offset))
-      let end = new Pos(path, offset + node.offset)
+      ranges.advanceTo(this.pos)
+      let pos = this.pos, end = pos + node.nodeSize
       let nextCut = ranges.nextChangeBefore(end)
 
       let inner = dom, wrapped
-      for (let i = 0; i < node.styles.length; i++) inner = inner.firstChild
+      for (let i = 0; i < node.marks.length; i++) inner = inner.firstChild
 
       if (dom.nodeType != 1) {
         dom = elt("span", null, dom)
-        if (!nextCut) wrapped = dom
+        if (nextCut == -1) wrapped = dom
       }
-      if (!wrapped && (nextCut || ranges.current.length)) {
+      if (!wrapped && (nextCut > -1 || ranges.current.length)) {
         wrapped = inner == dom ? (dom = elt("span", null, inner))
                                : inner.parentNode.appendChild(elt("span", null, inner))
       }
 
-      dom.setAttribute("pm-span", offset + "-" + end.offset)
-      if (!node.isText)
-        dom.setAttribute("pm-span-atom", "true")
+      dom.setAttribute("pm-offset", offset)
+      dom.setAttribute("pm-size", node.nodeSize)
 
       let inlineOffset = 0
-      while (nextCut) {
-        let size = nextCut - offset
+      while (nextCut > -1) {
+        let size = nextCut - pos
         let split = splitSpan(wrapped, size)
         if (ranges.current.length)
           split.className = ranges.current.join(" ")
-        split.setAttribute("pm-span-offset", inlineOffset)
+        split.setAttribute("pm-inner-offset", inlineOffset)
         inlineOffset += size
-        offset += size
-        ranges.advanceTo(new Pos(path, offset))
-        if (!(nextCut = ranges.nextChangeBefore(end)))
-          wrapped.setAttribute("pm-span-offset", inlineOffset)
+        ranges.advanceTo(nextCut)
+        nextCut = ranges.nextChangeBefore(end)
+        if (nextCut == -1)
+          wrapped.setAttribute("pm-inner-offset", inlineOffset)
+        pos += size
       }
 
       if (ranges.current.length)
         wrapped.className = ranges.current.join(" ")
+      this.pos += node.nodeSize
       return dom
     },
-    document: document,
-    path: path
+    document
   }
 }
 
@@ -67,74 +81,84 @@ function splitSpan(span, at) {
 
 export function draw(pm, doc) {
   pm.content.textContent = ""
-  pm.content.appendChild(toDOM(doc, options([], pm.ranges.activeRangeTracker())))
+  pm.content.appendChild(toDOM(doc, options(pm.ranges.activeRangeTracker())))
 }
 
-function deleteNextNodes(parent, at, amount) {
-  for (let i = 0; i < amount; i++) {
-    let prev = at
-    at = at.nextSibling
-    parent.removeChild(prev)
+function adjustTrailingHacks(dom, node) {
+  let needs = node.content.size == 0 || node.lastChild.type.isBR ||
+      (node.type.isCode && node.lastChild.isText && /\n$/.test(node.lastChild.text))
+      ? "br" : !node.lastChild.isText && node.lastChild.type.contains == null ? "text" : null
+  let last = dom.lastChild
+  let has = !last || last.nodeType != 1 || !last.hasAttribute("pm-ignore") ? null
+      : last.nodeName == "BR" ? "br" : "text"
+  if (needs != has) {
+    if (has) dom.removeChild(last)
+    if (needs) dom.appendChild(needs == "br" ? elt("br", {"pm-ignore": "trailing-break"})
+                               : elt("span", {"pm-ignore": "cursor-text"}, ""))
   }
-  return at
+}
+
+function findNodeIn(parent, i, node) {
+  for (; i < parent.childCount; i++) {
+    let child = parent.child(i)
+    if (child == node) return i
+  }
+  return -1
+}
+
+function movePast(dom) {
+  let next = dom.nextSibling
+  dom.parentNode.removeChild(dom)
+  return next
 }
 
 export function redraw(pm, dirty, doc, prev) {
-  let ranges = pm.ranges.activeRangeTracker()
-  let path = []
+  if (dirty.get(prev) == DIRTY_REDRAW) return draw(pm, doc)
 
-  function scan(dom, node, prev) {
-    let status = [], inPrev = [], inNode = []
-    for (let i = 0, j = 0; i < prev.length && j < node.width; i++) {
-      let cur = prev.child(i), dirtyStatus = dirty.get(cur)
-      status.push(dirtyStatus)
-      let matching = dirtyStatus ? -1 : node.children.indexOf(cur, j)
-      if (matching > -1) {
-        inNode[i] = matching
-        inPrev[matching] = i
-        j = matching + 1
-      }
-    }
+  let opts = options(pm.ranges.activeRangeTracker())
 
-    if (node.isTextblock) {
-      let needsBR = node.length == 0 ||
-          node.lastChild.type == node.type.schema.nodes.hard_break
-      let last = dom.lastChild, hasBR = last && last.nodeType == 1 && last.hasAttribute("pm-force-br")
-      if (needsBR && !hasBR)
-        dom.appendChild(elt("br", {"pm-force-br": "true"}))
-      else if (!needsBR && hasBR)
-        dom.removeChild(last)
-    }
+  function scan(dom, node, prev, pos) {
+    let iPrev = 0, pChild = prev.firstChild
+    let domPos = dom.firstChild
 
-    let domPos = dom.firstChild, j = 0
-    let block = node.isTextblock
-    for (let i = 0, offset = 0; i < node.length; i++) {
-      let child = node.child(i)
-      if (!block) path.push(i)
-      let found = inPrev[i]
-      let nodeLeft = true
+    for (let iNode = 0, offset = 0; iNode < node.childCount; iNode++) {
+      let child = node.child(iNode), matching, reuseDOM
+      let found = pChild == child ? iPrev : findNodeIn(prev, iPrev + 1, child)
       if (found > -1) {
-        domPos = deleteNextNodes(dom, domPos, found - j)
-        j = found
-      } else if (!block && j < prev.length && inNode[j] == null &&
-                 status[j] != 2 && child.sameMarkup(prev.child(j))) {
-        scan(domPos, child, prev.child(j))
+        matching = child
+        while (iPrev != found) {
+          iPrev++
+          domPos = movePast(domPos)
+        }
+      }
+
+      if (matching && !dirty.get(matching)) {
+        reuseDOM = true
+      } else if (pChild && !child.isText && child.sameMarkup(pChild) && dirty.get(pChild) != DIRTY_REDRAW) {
+        reuseDOM = true
+        if (pChild.type.contains)
+          scan(childContainer(domPos), child, pChild, pos + offset + 1)
       } else {
-        dom.insertBefore(renderNodeToDOM(child, options(path, ranges), block ? offset : i), domPos)
-        nodeLeft = false
+        opts.pos = pos + offset
+        let rendered = nodeToDOM(child, opts, offset)
+        dom.insertBefore(rendered, domPos)
+        reuseDOM = false
       }
-      if (nodeLeft) {
-        if (block)
-          domPos.setAttribute("pm-span", offset + "-" + (offset + child.offset))
-        else
-          domPos.setAttribute("pm-path", i)
+
+      if (reuseDOM) {
+        domPos.setAttribute("pm-offset", offset)
+        domPos.setAttribute("pm-size", child.nodeSize)
         domPos = domPos.nextSibling
-        j++
+        pChild = prev.maybeChild(++iPrev)
       }
-      if (block) offset += child.offset
-      else path.pop()
+      offset += child.nodeSize
     }
-    deleteNextNodes(dom, domPos, prev.length - j)
+
+    while (pChild) {
+      domPos = movePast(domPos)
+      pChild = prev.maybeChild(++iPrev)
+    }
+    if (node.isTextblock) adjustTrailingHacks(dom, node)
   }
-  scan(pm.content, doc, prev)
+  scan(pm.content, doc, prev, 0)
 }
