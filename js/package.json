@@ -1,11 +1,11 @@
 {
-  "name": "prosemirror-test",
+  "name": "pensieve-js",
   "version": "0.0.1",
-  "description": "Test prosemirror",
+  "description": "Prosemirror JS for pensieve",
   "scripts": {
   },
-  "author": "",
-  "license": "BSD",
+  "author": "lhl@randomfoo.net",
+  "license": "GPLv3",
   "dependencies": {
     "browserify": "*",
     "babelify": "*",
