@@ -6,6 +6,10 @@
   },
   "author": "lhl@randomfoo.net",
   "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lhl/pensieve"
+  },
   "dependencies": {
     "browserify": "*",
     "babelify": "*",
