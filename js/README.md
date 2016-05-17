@@ -11,6 +11,7 @@ or run `watchify` to automatically update the bundle:
 ```
 watchify test.js -o test_bundle.js
 ```
+or modify and run the included `watch.sh` and `stop-watch.sh` scripts (you can use a Makefile or add npm 'scripts' in the package.json but there are some shell dependencies)
 
 ## Installation
 
