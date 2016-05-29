@@ -135,13 +135,13 @@ function deleteBarrier(pm, cut) {
   }
 
   var conn = void 0;
-  if (after.isTextblock && (conn = before.findWrappingAt($cut.index(), after.type))) {
+  if (after.isTextblock && (conn = before.contentMatchAt($cut.index()).findWrapping(after.type, after.attrs))) {
     var end = cut + after.nodeSize,
         wrap = _model.Fragment.empty;
     for (var i = conn.length - 1; i >= 0; i--) {
-      wrap = _model.Fragment.from(conn[i].create(wrap));
+      wrap = _model.Fragment.from(conn[i].type.create(conn[i].attrs, wrap));
     }wrap = _model.Fragment.from(before.copy(wrap));
-    return pm.tr.step(new _transform.ReplaceWrapStep(cut - 1, end, cut, end, new _model.Slice(wrap, 1, 0), conn.length, true)).join(end + 2 * conn.length, 1, true).apply(pm.apply.scroll);
+    return pm.tr.step(new _transform.ReplaceAroundStep(cut - 1, end, cut, end, new _model.Slice(wrap, 1, 0), conn.length, true)).join(end + 2 * conn.length, 1, true).apply(pm.apply.scroll);
   }
 
   var selAfter = (0, _selection.findSelectionFrom)(pm.doc, cut, 1);
@@ -692,7 +692,7 @@ baseCommands.redo = {
   },
   keys: ["Mod-Y", "Shift-Mod-Z"]
 };
-},{"../dom":1,"../model":29,"../transform":35,"./char":4,"./selection":17}],3:[function(require,module,exports){
+},{"../dom":1,"../model":26,"../transform":33,"./char":4,"./selection":18}],3:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -859,7 +859,7 @@ if (_dom.browser.mac) {
 }
 
 var captureKeys = exports.captureKeys = new _browserkeymap2.default(keys);
-},{"../dom":1,"./selection":17,"browserkeymap":51}],4:[function(require,module,exports){
+},{"../dom":1,"./selection":18,"browserkeymap":50}],4:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -1393,7 +1393,7 @@ _model.MarkType.derivableCommands.toggle = function () {
 
 function isAtTopOfListItem(doc, from, to, listType) {
   var $from = doc.resolve(from);
-  return $from.sameParent(doc.resolve(to)) && $from.depth >= 2 && $from.index(-1) == 0 && listType.containsOnly($from.node(-1));
+  return $from.sameParent(doc.resolve(to)) && $from.depth >= 2 && $from.index(-1) == 0 && $from.node(-2).type.compatibleContent(listType);
 }
 
 _model.NodeType.derivableCommands.wrap = function (conf) {
@@ -1424,7 +1424,7 @@ _model.NodeType.derivableCommands.wrap = function (conf) {
       var to = _pm$selection5.to;
       var head = _pm$selection5.head;
 
-      if (conf.list && head && isAtTopOfListItem(pm.doc, from, to, this) && pm.doc.resolve(from).index(-2) == 0) return false;
+      if (conf.list && head != null && isAtTopOfListItem(pm.doc, from, to, this) && pm.doc.resolve(from).index(-2) == 0) return false;
       return (0, _transform.canWrap)(pm.doc, from, to, this);
     },
 
@@ -1484,7 +1484,7 @@ _model.NodeType.derivableCommands.make = function (conf) {
       var $from = pm.doc.resolve(from),
           parentDepth = $from.depth - depth,
           index = $from.index(parentDepth);
-      return $from.node(parentDepth).canReplaceWith(index, index + 1, this);
+      return $from.node(parentDepth).canReplaceWith(index, index + 1, this, conf.attrs);
     },
     active: function active(pm) {
       return activeTextblockIs(pm, this, conf.attrs);
@@ -1510,7 +1510,7 @@ _model.NodeType.derivableCommands.insert = function (conf) {
     params: deriveParams(this, conf.params)
   };
 };
-},{"../dom":1,"../model":29,"../transform":35,"../util/obj":49,"../util/sortedinsert":50,"./base_commands":2,"browserkeymap":51}],6:[function(require,module,exports){
+},{"../dom":1,"../model":26,"../transform":33,"../util/obj":47,"../util/sortedinsert":49,"./base_commands":2,"browserkeymap":50}],6:[function(require,module,exports){
 "use strict";
 
 var _dom = require("../dom");
@@ -1527,7 +1527,7 @@ exports.readCompositionChange = readCompositionChange;
 
 var _model = require("../model");
 
-var _format = require("../format");
+var _htmlformat = require("../htmlformat");
 
 var _map = require("../transform/map");
 
@@ -1565,7 +1565,7 @@ function parseBetween(pm, from, to) {
     var next = parent.childNodes[endOff];
     if (next.nodeType != 1 || !next.hasAttribute("pm-offset")) ++endOff;else break;
   }
-  return (0, _format.fromDOM)(pm.schema, parent, {
+  return (0, _htmlformat.fromDOM)(pm.schema, parent, {
     topNode: pm.doc.resolve(from).parent.copy(),
     from: startOff,
     to: endOff,
@@ -1717,7 +1717,7 @@ function markDirtyFor(pm, doc, start, end) {
       same = $start.sameDepth($end);
   if (same == 0) pm.markAllDirty();else pm.markRangeDirty($start.before(same), $start.after(same), doc);
 }
-},{"../format":21,"../model":29,"../transform/map":36,"./dompos":8,"./selection":17}],8:[function(require,module,exports){
+},{"../htmlformat":20,"../model":26,"../transform/map":34,"./dompos":8,"./selection":18}],8:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -2027,24 +2027,24 @@ function coordsAtPos(pm, pos) {
 // You can add several properties to [node types](#NodeType) to
 // influence the way the editor interacts with them.
 
-// :: (node: Node, pos: number, dom: DOMNode, coords: {left: number, top: number}) → ?number
-// #path=NodeType.prototype.countCoordsAsChild
-// Specifies that, if this node is clicked, a child node might
-// actually be meant. This is used to, for example, make clicking a
-// list marker (which, in the DOM, is part of the list node) select
-// the list item it belongs to. Should return null if the given
-// coordinates don't refer to a child node, or the position
-// before the child otherwise.
+function targetKludge(dom, coords) {
+  if (/^[uo]l$/i.test(dom.nodeName)) {
+    for (var child = dom.firstChild; child; child = child.nextSibling) {
+      if (child.nodeType != 1 || !child.hasAttribute("pm-offset") || !/^li$/i.test(child.nodeName)) continue;
+      var childBox = child.getBoundingClientRect();
+      if (coords.left > childBox.left - 2) break;
+      if (childBox.top <= coords.top && childBox.bottom >= coords.top) return child;
+    }
+  }
+  return dom;
+}
 
 function selectableNodeAbove(pm, dom, coords, liberal) {
+  dom = targetKludge(dom, coords);
   for (; dom && dom != pm.content; dom = dom.parentNode) {
     if (dom.hasAttribute("pm-offset")) {
       var pos = posBeforeFromDOM(pm, dom),
           node = pm.doc.nodeAt(pos);
-      if (node.type.countCoordsAsChild) {
-        var result = node.type.countCoordsAsChild(node, pos, dom, coords);
-        if (result != null) return result;
-      }
       // Leaf nodes are implicitly clickable
       if ((liberal || node.type.isLeaf) && node.type.selectable) return pos;
       if (!liberal) return null;
@@ -2105,7 +2105,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.draw = draw;
 exports.redraw = redraw;
 
-var _format = require("../format");
+var _htmlformat = require("../htmlformat");
 
 var _dom = require("../dom");
 
@@ -2116,32 +2116,25 @@ var _dompos = require("./dompos");
 function options(ranges) {
   return {
     pos: 0,
-    preRenderContent: function preRenderContent() {
-      this.pos++;
-    },
-    postRenderContent: function postRenderContent() {
-      this.pos++;
-    },
-    onRender: function onRender(node, dom, offset) {
+
+    onRender: function onRender(node, dom, _pos, offset) {
       if (node.isBlock) {
         if (offset != null) dom.setAttribute("pm-offset", offset);
         dom.setAttribute("pm-size", node.nodeSize);
         if (node.isTextblock) adjustTrailingHacks(dom, node);
         if (dom.contentEditable == "false") dom = (0, _dom.elt)("div", null, dom);
-        if (node.type.isLeaf) this.pos++;
       }
 
       return dom;
     },
-    onContainer: function onContainer(node) {
-      node.setAttribute("pm-container", true);
+    onContainer: function onContainer(dom) {
+      dom.setAttribute("pm-container", true);
     },
 
-    // : (Node, DOMNode, number) → DOMNode
-    renderInlineFlat: function renderInlineFlat(node, dom, offset) {
-      ranges.advanceTo(this.pos);
-      var pos = this.pos,
-          end = pos + node.nodeSize;
+    // : (Node, DOMNode, number, number) → DOMNode
+    renderInlineFlat: function renderInlineFlat(node, dom, pos, offset) {
+      ranges.advanceTo(pos);
+      var end = pos + node.nodeSize;
       var nextCut = ranges.nextChangeBefore(end);
 
       var inner = dom,
@@ -2173,7 +2166,6 @@ function options(ranges) {
       }
 
       if (ranges.current.length) wrapped.className = ranges.current.join(" ");
-      this.pos += node.nodeSize;
       return dom;
     },
 
@@ -2191,7 +2183,7 @@ function splitSpan(span, at) {
 
 function draw(pm, doc) {
   pm.content.textContent = "";
-  pm.content.appendChild((0, _format.toDOM)(doc, options(pm.ranges.activeRangeTracker())));
+  pm.content.appendChild((0, _htmlformat.toDOM)(doc, options(pm.ranges.activeRangeTracker())));
 }
 
 function adjustTrailingHacks(dom, node) {
@@ -2248,7 +2240,7 @@ function redraw(pm, dirty, doc, prev) {
         if (!pChild.type.isLeaf) scan((0, _dompos.childContainer)(domPos), child, pChild, pos + offset + 1);
       } else {
         opts.pos = pos + offset;
-        var rendered = (0, _format.nodeToDOM)(child, opts, offset);
+        var rendered = (0, _htmlformat.nodeToDOM)(child, opts, offset);
         dom.insertBefore(rendered, domPos);
         reuseDOM = false;
       }
@@ -2281,7 +2273,7 @@ function iosHacks(dom) {
     dom.style.cssText = oldCSS;
   }
 }
-},{"../dom":1,"../format":21,"./dompos":8,"./main":13}],10:[function(require,module,exports){
+},{"../dom":1,"../htmlformat":20,"./dompos":8,"./main":13}],10:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -2829,13 +2821,13 @@ var History = exports.History = function () {
 
   return History;
 }();
-},{"../transform":35}],11:[function(require,module,exports){
+},{"../transform":33}],11:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.Keymap = exports.baseCommands = exports.Command = exports.CommandSet = exports.MarkedRange = exports.NodeSelection = exports.TextSelection = exports.Selection = exports.defineOption = exports.ProseMirror = undefined;
+exports.Keymap = exports.Plugin = exports.baseCommands = exports.Command = exports.CommandSet = exports.MarkedRange = exports.NodeSelection = exports.TextSelection = exports.Selection = exports.ProseMirror = undefined;
 
 var _main = require("./main");
 
@@ -2843,15 +2835,6 @@ Object.defineProperty(exports, "ProseMirror", {
   enumerable: true,
   get: function get() {
     return _main.ProseMirror;
-  }
-});
-
-var _options = require("./options");
-
-Object.defineProperty(exports, "defineOption", {
-  enumerable: true,
-  get: function get() {
-    return _options.defineOption;
   }
 });
 
@@ -2909,6 +2892,15 @@ Object.defineProperty(exports, "baseCommands", {
   }
 });
 
+var _plugin = require("./plugin");
+
+Object.defineProperty(exports, "Plugin", {
+  enumerable: true,
+  get: function get() {
+    return _plugin.Plugin;
+  }
+});
+
 require("./schema_commands");
 
 var _browserkeymap = require("browserkeymap");
@@ -2918,7 +2910,7 @@ var _browserkeymap2 = _interopRequireDefault(_browserkeymap);
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 exports.Keymap = _browserkeymap2.default;
-},{"./base_commands":2,"./command":5,"./main":13,"./options":14,"./range":15,"./schema_commands":16,"./selection":17,"browserkeymap":51}],12:[function(require,module,exports){
+},{"./base_commands":2,"./command":5,"./main":13,"./plugin":15,"./range":16,"./schema_commands":17,"./selection":18,"browserkeymap":50}],12:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -2928,13 +2920,13 @@ exports.Input = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _model = require("../model");
-
 var _browserkeymap = require("browserkeymap");
 
 var _browserkeymap2 = _interopRequireDefault(_browserkeymap);
 
-var _format = require("../format");
+var _htmlformat = require("../htmlformat");
+
+var _model = require("../model");
 
 var _capturekeys = require("./capturekeys");
 
@@ -3144,9 +3136,9 @@ function selectClickedNode(pm, e, target) {
   if (node) {
     var $pos = pm.doc.resolve(pos),
         $from = pm.doc.resolve(from);
-    if ($pos.depth >= $from.depth && $pos.before() == from) {
+    if ($pos.depth >= $from.depth && $pos.before($from.depth + 1) == from) {
       if ($from.depth == 0) return pm.sel.fastPoll();
-      pos = $pos.before();
+      pos = $pos.before($from.depth);
     }
   }
 
@@ -3334,14 +3326,13 @@ handlers.input = function (pm) {
 };
 
 function toClipboard(doc, from, to, dataTransfer) {
-  var slice = doc.slice(from, to),
-      $from = doc.resolve(from);
-  var parent = $from.node($from.depth - slice.openLeft);
-  var attr = parent.type.name + " " + slice.openLeft + " " + slice.openRight;
-  var html = "<div pm-context=\"" + attr + "\">" + (0, _format.toHTML)(slice.content) + "</div>";
+  var slice = doc.slice(from, to);
+  if (!slice.openLeft && !slice.openRight && slice.possibleParent) slice = new _model.Slice(_model.Fragment.from(slice.possibleParent.copy(slice.content), 1, 1));
+  var attr = slice.openLeft + "/" + slice.openRight;
+  var html = "<div pm-context=\"" + attr + "\">" + (0, _htmlformat.toHTML)(slice.content) + "</div>";
   dataTransfer.clearData();
   dataTransfer.setData("text/html", html);
-  dataTransfer.setData("text/plain", (0, _format.toText)(slice.content));
+  dataTransfer.setData("text/plain", slice.content.textBetween(0, slice.content.size, "\n\n"));
   return slice;
 }
 
@@ -3370,43 +3361,29 @@ function canUpdateClipboard(dataTransfer) {
 // into the document.
 
 // : (ProseMirror, DataTransfer, ?bool) → ?Slice
-function fromClipboard(pm, dataTransfer, plainText) {
+function fromClipboard(pm, dataTransfer, plainText, target) {
   var txt = dataTransfer.getData("text/plain");
   var html = dataTransfer.getData("text/html");
   if (!html && !txt) return null;
-  var doc = void 0,
-      slice = void 0;
+  var dom = document.createElement("div");
   if ((plainText || !html) && txt) {
-    doc = (0, _format.parseFrom)(pm.schema, pm.signalPipelined("transformPastedText", txt), "text");
+    pm.signalPipelined("transformPastedText", txt).split(/\n{2,}/).forEach(function (para) {
+      dom.appendChild(document.createElement("paragraph")).textContent = para;
+    });
   } else {
-    var dom = document.createElement("div");
     dom.innerHTML = pm.signalPipelined("transformPastedHTML", html);
-    var wrap = dom.querySelector("[pm-context]"),
-        context = void 0,
-        contextNodeType = void 0,
-        found = void 0;
-    if (wrap && (context = /^(\w+) (\d+) (\d+)$/.exec(wrap.getAttribute("pm-context"))) && (contextNodeType = pm.schema.nodes[context[1]]) && contextNodeType.defaultAttrs && (found = parseFromContext(wrap, contextNodeType, +context[2], +context[3]))) slice = found;else doc = (0, _format.fromDOM)(pm.schema, dom);
   }
-  if (!slice) {
-    if (doc.content.size && doc.firstChild.isTextblock) slice = doc.slice((0, _selection.findSelectionAtStart)(doc).from, (0, _selection.findSelectionAtEnd)(doc).to);else slice = new _model.Slice(doc.content, 0, 0);
+  var wrap = dom.querySelector("[pm-context]"),
+      m = void 0,
+      openLeft = null,
+      openRight = null;
+  if (wrap && (m = /^(\d+)\/(\d+)$/.exec(wrap.getAttribute("pm-context")))) {
+    dom = wrap;
+    openLeft = +m[1];
+    openRight = +m[2];
   }
+  var slice = (0, _htmlformat.fromDOMInContext)(pm.doc.resolve(target), dom, { openLeft: openLeft, openRight: openRight, preserveWhiteSpace: true });
   return pm.signalPipelined("transformPasted", slice);
-}
-
-function parseFromContext(dom, contextNodeType, openLeft, openRight) {
-  var schema = contextNodeType.schema,
-      contextNode = contextNodeType.create();
-  var parsed = (0, _format.fromDOM)(schema, dom, { topNode: contextNode, preserveWhitespace: true });
-  return new _model.Slice(parsed.content, clipOpen(parsed.content, openLeft, true), clipOpen(parsed.content, openRight, false), contextNode);
-}
-
-function clipOpen(fragment, max, start) {
-  for (var i = 0; i < max; i++) {
-    var node = start ? fragment.firstChild : fragment.lastChild;
-    if (!node || node.type.isLeaf) return i;
-    fragment = node.content;
-  }
-  return max;
 }
 
 handlers.copy = handlers.cut = function (pm, e) {
@@ -3431,10 +3408,25 @@ handlers.paste = function (pm, e) {
     return;
   }
   var sel = pm.selection;
-  var slice = fromClipboard(pm, e.clipboardData, pm.input.shiftKey);
+  var slice = fromClipboard(pm, e.clipboardData, pm.input.shiftKey, sel.from);
   if (slice) {
     e.preventDefault();
-    var tr = pm.tr.replace(sel.from, sel.to, slice);
+    var start = sel.from,
+        $from = void 0,
+        wrap = slice.possibleParent;
+    if (!wrap && slice.openLeft) {
+      wrap = slice.content.firstChild;
+      for (var i = 1; i < slice.openLeft; i++) {
+        wrap = wrap.firstChild;
+      }
+    }
+    // When pasting textblock content in an empty textblock, preserve
+    // the original type.
+    if (wrap && wrap.isTextblock && ($from = pm.doc.resolve(sel.from)).parent.isTextblock && !$from.parent.content.size) {
+      start--;
+      if (slice.openLeft) slice = new _model.Slice(slice.content, slice.openLeft - 1, slice.openRight);else slice = new _model.Slice(_model.Fragment.from(wrap.copy(slice.content)), 0, slice.openRight + 1);
+    }
+    var tr = pm.tr.replace(start, sel.to, slice);
     tr.apply({ scrollIntoView: true, selection: (0, _selection.findSelectionNear)(tr.doc, tr.map(sel.to)) });
   }
 };
@@ -3447,9 +3439,8 @@ var Dragging = function Dragging(slice, from, to) {
   this.to = to;
 };
 
-function dropPos(pm, e, slice) {
-  var pos = pm.posAtCoords({ left: e.clientX, top: e.clientY });
-  if (pos == null || !slice || !slice.content.size) return pos;
+function dropPos(pm, slice, pos) {
+  if (!slice || !slice.content.size) return pos;
   var $pos = pm.doc.resolve(pos);
   for (var d = $pos.depth; d >= 0; d--) {
     var bias = d == $pos.depth ? 0 : pos <= ($pos.start(d + 1) + $pos.end(d + 1)) / 2 ? -1 : 1;
@@ -3505,7 +3496,7 @@ handlers.dragover = handlers.dragenter = function (pm, e) {
   var target = pm.input.dropTarget;
   if (!target) target = pm.input.dropTarget = pm.wrapper.appendChild((0, _dom.elt)("div", { class: "ProseMirror-drop-target" }));
 
-  var pos = dropPos(pm, e, pm.input.dragging && pm.input.dragging.slice);
+  var pos = dropPos(pm, pm.input.dragging && pm.input.dragging.slice, pm.posAtCoords({ left: e.clientX, top: e.clientY }));
   if (pos == null) return;
   var coords = pm.coordsAtPos(pos);
   var rect = pm.wrapper.getBoundingClientRect();
@@ -3533,28 +3524,29 @@ handlers.drop = function (pm, e) {
   // or returning a truthy value.
   if (!e.dataTransfer || pm.signalDOM(e)) return;
 
-  var slice = dragging && dragging.slice || fromClipboard(pm, e.dataTransfer);
-  if (slice) {
-    e.preventDefault();
-    var insertPos = dropPos(pm, e, slice),
-        start = insertPos;
-    if (insertPos == null) return;
-    var tr = pm.tr;
-    if (dragging && !e.ctrlKey && dragging.from != null) {
-      tr.delete(dragging.from, dragging.to);
-      insertPos = tr.map(insertPos);
-    }
-    tr.replace(insertPos, insertPos, slice).apply();
-    var found = void 0;
-    if (slice.content.childCount == 1 && slice.openLeft == 0 && slice.openRight == 0 && slice.content.child(0).type.selectable && (found = pm.doc.nodeAt(insertPos)) && found.sameMarkup(slice.content.child(0))) {
-      pm.setNodeSelection(insertPos);
-    } else {
-      var left = (0, _selection.findSelectionNear)(pm.doc, insertPos, 1, true).from;
-      var right = (0, _selection.findSelectionNear)(pm.doc, tr.map(start), -1, true).to;
-      pm.setTextSelection(left, right);
-    }
-    pm.focus();
+  var mousePos = pm.posAtCoords({ left: e.clientX, top: e.clientY });
+  if (mousePos == null) return;
+  var slice = dragging && dragging.slice || fromClipboard(pm, e.dataTransfer, mousePos);
+  if (!slice) return;
+
+  e.preventDefault();
+  var insertPos = dropPos(pm, slice, mousePos),
+      start = insertPos;
+  var tr = pm.tr;
+  if (dragging && !e.ctrlKey && dragging.from != null) {
+    tr.delete(dragging.from, dragging.to);
+    insertPos = tr.map(insertPos);
   }
+  tr.replace(insertPos, insertPos, slice).apply();
+  var found = void 0;
+  if (slice.content.childCount == 1 && slice.openLeft == 0 && slice.openRight == 0 && slice.content.child(0).type.selectable && (found = pm.doc.nodeAt(insertPos)) && found.sameMarkup(slice.content.child(0))) {
+    pm.setNodeSelection(insertPos);
+  } else {
+    var left = (0, _selection.findSelectionNear)(pm.doc, insertPos, 1, true).from;
+    var right = (0, _selection.findSelectionNear)(pm.doc, tr.map(start), -1, true).to;
+    pm.setTextSelection(left, right);
+  }
+  pm.focus();
 };
 
 handlers.focus = function (pm) {
@@ -3570,7 +3562,7 @@ handlers.blur = function (pm) {
   // Fired when the editor loses focus.
   pm.signal("blur");
 };
-},{"../dom":1,"../format":21,"../model":29,"./capturekeys":3,"./domchange":7,"./dompos":8,"./selection":17,"browserkeymap":51}],13:[function(require,module,exports){
+},{"../dom":1,"../htmlformat":20,"../model":26,"./capturekeys":3,"./domchange":7,"./dompos":8,"./selection":18,"browserkeymap":50}],13:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -3595,8 +3587,6 @@ var _map = require("../util/map");
 var _event = require("../util/event");
 
 var _dom = require("../dom");
-
-var _format = require("../format");
 
 var _options = require("./options");
 
@@ -3633,6 +3623,8 @@ var ProseMirror = exports.ProseMirror = function () {
   // document.
 
   function ProseMirror(opts) {
+    var _this = this;
+
     _classCallCheck(this, ProseMirror);
 
     (0, _dom.ensureCSSAdded)();
@@ -3641,7 +3633,7 @@ var ProseMirror = exports.ProseMirror = function () {
     // :: Schema
     // The schema for this editor's document.
     this.schema = opts.schema;
-    if (opts.doc == null) opts.doc = this.schema.node("doc", null, [this.schema.node("paragraph")]);
+    if (opts.doc == null) opts.doc = this.schema.nodes.doc.create(null, this.schema.nodes.doc.fixContent());
     // :: DOMNode
     // The editable DOM node containing the document.
     this.content = (0, _dom.elt)("div", { class: "ProseMirror-content", "pm-container": true });
@@ -3652,15 +3644,13 @@ var ProseMirror = exports.ProseMirror = function () {
 
     if (opts.place && opts.place.appendChild) opts.place.appendChild(this.wrapper);else if (opts.place) opts.place(this.wrapper);
 
-    this.setDocInner(opts.docFormat ? (0, _format.parseFrom)(this.schema, opts.doc, opts.docFormat) : opts.doc);
+    this.setDocInner(opts.doc);
     (0, _draw.draw)(this, this.doc);
     this.content.contentEditable = true;
     if (opts.label) this.content.setAttribute("aria-label", opts.label);
 
-    // :: Object
-    // A namespace where modules can store references to themselves
-    // associated with this editor instance.
-    this.mod = Object.create(null);
+    // A namespace where plugins can store their state. See the `Plugin` class.
+    this.plugin = Object.create(null);
     this.cached = Object.create(null);
     this.operation = null;
     this.dirtyNodes = new _map.Map(); // Maps node object to 1 (re-scan content) or 2 (redraw entirely)
@@ -3675,6 +3665,9 @@ var ProseMirror = exports.ProseMirror = function () {
     this.commands = null;
     this.commandKeys = null;
     (0, _options.initOptions)(this);
+    this.options.plugins.forEach(function (plugin) {
+      return plugin.attach(_this);
+    });
   }
 
   // :: (string, any)
@@ -3739,30 +3732,6 @@ var ProseMirror = exports.ProseMirror = function () {
     value: function setSelection(selection) {
       this.ensureOperation();
       if (!selection.eq(this.sel.range)) this.sel.setAndSignal(selection);
-    }
-
-    // :: (any, ?string)
-    // Replace the editor's document. When `format` is given, it should
-    // be a [parsable format](#format), and `value` should something in
-    // that format. If not, `value` should be a `Node`.
-
-  }, {
-    key: "setContent",
-    value: function setContent(value, format) {
-      if (format) value = (0, _format.parseFrom)(this.schema, value, format);
-      this.setDoc(value);
-    }
-
-    // :: (?string, ?Object) → any
-    // Get the editor's content in a given format. When `format` is not
-    // given, a `Node` is returned. If it is given, it should be an
-    // existing [serialization format](#format). Options to the serializer
-    // may be given as a second argument.
-
-  }, {
-    key: "getContent",
-    value: function getContent(format, options) {
-      return format ? (0, _format.serializeTo)(this.doc, format, options || {}) : this.doc;
     }
   }, {
     key: "setDocInner",
@@ -3898,13 +3867,13 @@ var ProseMirror = exports.ProseMirror = function () {
   }, {
     key: "startOperation",
     value: function startOperation(options) {
-      var _this = this;
+      var _this2 = this;
 
       this.operation = new Operation(this, options);
       if (!(options && options.readSelection === false) && this.sel.readFromDOM()) this.operation.sel = this.sel.range;
 
       if (this.flushScheduled == null) this.flushScheduled = (0, _dom.requestAnimationFrame)(function () {
-        return _this.flush();
+        return _this2.flush();
       });
       return this.operation;
     }
@@ -4268,18 +4237,17 @@ var Operation = function Operation(pm, options) {
   this.mappings = [];
   this.composing = null;
 };
-},{"../dom":1,"../format":21,"../util/event":47,"../util/map":48,"../util/sortedinsert":50,"./css":6,"./dompos":8,"./draw":9,"./history":10,"./input":12,"./options":14,"./range":15,"./selection":17,"./transform":18,"browserkeymap":51}],14:[function(require,module,exports){
+},{"../dom":1,"../util/event":45,"../util/map":46,"../util/sortedinsert":49,"./css":6,"./dompos":8,"./draw":9,"./history":10,"./input":12,"./options":14,"./range":16,"./selection":18,"./transform":19,"browserkeymap":50}],14:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.defineOption = defineOption;
 exports.parseOptions = parseOptions;
 exports.initOptions = initOptions;
 exports.setOption = setOption;
 
-var _model = require("../model");
+var _schema = require("../schema");
 
 var _prompt = require("../ui/prompt");
 
@@ -4304,7 +4272,7 @@ var Option = function Option(defaultValue, update, updateOnInit) {
 
 var options = Object.create(null);
 
-// :: (string, any, ?(pm: ProseMirror, newValue: any, oldValue: any, init: bool), bool)
+// : (string, any, ?(pm: ProseMirror, newValue: any, oldValue: any, init: bool), bool)
 // Define a new option. The `update` handler will be called with the
 // option's old and new value every time the option is
 // [changed](#ProseMirror.setOption). When `updateOnInit` is false, it
@@ -4316,19 +4284,13 @@ function defineOption(name, defaultValue, update, updateOnInit) {
 
 // :: Schema #path=schema #kind=option
 // The [schema](#Schema) that the editor's document should use.
-defineOption("schema", _model.defaultSchema);
+defineOption("schema", _schema.defaultSchema);
 
-// :: any #path=doc #kind=option
-// The starting document. Usually a `Node`, but can be in another
-// format when the `docFormat` option is also specified.
+// :: Node #path=doc #kind=option
+// The starting document.
 defineOption("doc", null, function (pm, value) {
   return pm.setDoc(value);
 }, false);
-
-// :: ?string #path=docFormat #kind=option
-// The format in which the `doc` option is given. Defaults to `null`
-// (a raw `Node`).
-defineOption("docFormat", null);
 
 // :: ?union<DOMNode, (DOMNode)> #path=place #kind=option
 // Determines the placement of the editor in the page. When `null`,
@@ -4382,6 +4344,8 @@ defineOption("label", null);
 // a string, i.e. :: (string) → string
 defineOption("translate", null); // FIXME create a way to explicitly force a menu redraw
 
+defineOption("plugins", [], false);
+
 function parseOptions(obj) {
   var result = Object.create(null);
   var given = obj ? [obj].concat(obj.use || []) : [];
@@ -4412,7 +4376,120 @@ function setOption(pm, name, value) {
   pm.options[name] = value;
   if (desc.update) desc.update(pm, value, old, false);
 }
-},{"../model":29,"../ui/prompt":44,"./command":5}],15:[function(require,module,exports){
+},{"../schema":32,"../ui/prompt":42,"./command":5}],15:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var pluginProps = Object.create(null);
+
+// Each plugin gets assigned a unique property name, so that its state
+// can be stored in the editor's `plugin` object.
+function registerProp() {
+  var name = arguments.length <= 0 || arguments[0] === undefined ? "plugin" : arguments[0];
+
+  for (var i = 1;; i++) {
+    var prop = name + (i > 1 ? "_" + i : "");
+    if (!(prop in pluginProps)) return pluginProps[prop] = prop;
+  }
+}
+
+// ;; A plugin is a piece of functionality that can be attached to a
+// ProseMirror instance. It may do something like show a
+// [menu](#menubar) or wire in [collaborative editing](#collab). The
+// plugin object is the interface to enabling and disabling the
+// plugin, and for those where this is relevant, for accessing its
+// state.
+
+var Plugin = exports.Plugin = function () {
+  // :: (constructor, ?Object)
+  // Create a plugin object for the given state class. If desired, you
+  // can pass a collection of options. When initializing the plugin,
+  // it will receive the ProseMirror instance and the options as
+  // arguments to its constructor.
+
+  function Plugin(State, options, prop) {
+    _classCallCheck(this, Plugin);
+
+    this.State = State;
+    this.options = options || Object.create(null);
+    this.prop = prop || registerProp(State.name);
+  }
+
+  // :: (ProseMirror) → ?any
+  // Return the plugin state for the given editor, if any.
+
+
+  _createClass(Plugin, [{
+    key: "get",
+    value: function get(pm) {
+      return pm.plugin[this.prop];
+    }
+
+    // :: (ProseMirror) → any
+    // Initialize the plugin for the given editor. If it was already
+    // enabled, it is first disabled and then re-enabled.
+
+  }, {
+    key: "attach",
+    value: function attach(pm) {
+      this.detach(pm);
+      return pm.plugin[this.prop] = new this.State(pm, this.options);
+    }
+
+    // :: (ProseMirror)
+    // Disable the plugin in the given editor. If the state has a
+    // `detach` method, that will be called with the editor as argument,
+    // to give it a chance to clean up.
+
+  }, {
+    key: "detach",
+    value: function detach(pm) {
+      var found = this.get(pm);
+      if (found) {
+        if (found.detach) found.detach(pm);
+        delete pm.plugin[this.prop];
+      }
+    }
+
+    // :: (ProseMirror) → any
+    // Get the plugin state for an editor. Initializes the plugin if it
+    // wasn't already active.
+
+  }, {
+    key: "ensure",
+    value: function ensure(pm) {
+      return this.get(pm) || this.attach(pm);
+    }
+
+    // :: (?Object) → Plugin
+    // Configure the plugin. The given options will be combined with the
+    // existing (default) options, with the newly provided ones taking
+    // precedence. Returns a new plugin object with the new
+    // configuration.
+
+  }, {
+    key: "config",
+    value: function config(options) {
+      if (!options) return this;
+      var result = Object.create(null);
+      for (var prop in this.options) {
+        result[prop] = this.options[prop];
+      }for (var _prop in options) {
+        result[_prop] = options[_prop];
+      }return new Plugin(this.State, result, this.prop);
+    }
+  }]);
+
+  return Plugin;
+}();
+},{}],16:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -4615,8 +4692,10 @@ var RangeTracker = function () {
 
   return RangeTracker;
 }();
-},{"../util/event":47}],16:[function(require,module,exports){
+},{"../util/event":45}],17:[function(require,module,exports){
 "use strict";
+
+var _schema = require("../schema");
 
 var _model = require("../model");
 
@@ -4624,17 +4703,15 @@ var _transform = require("../transform");
 
 var _command = require("./command");
 
-var _format = require("../format");
-
 // # Mark types
 
 // ;; #path="strong:set" #kind=command
 // Add the [strong](#StrongMark) mark to the selected content.
-_model.StrongMark.register("command", "set", { derive: true, label: "Set strong" });
+_schema.StrongMark.register("command", "set", { derive: true, label: "Set strong" });
 
 // ;; #path="strong:unset" #kind=command
 // Remove the [strong](#StrongMark) mark from the selected content.
-_model.StrongMark.register("command", "unset", { derive: true, label: "Unset strong" });
+_schema.StrongMark.register("command", "unset", { derive: true, label: "Unset strong" });
 
 // ;; #path="strong:toggle" #kind=command
 // Toggle the [strong](#StrongMark) mark. If there is any strong
@@ -4645,7 +4722,7 @@ _model.StrongMark.register("command", "unset", { derive: true, label: "Unset str
 // makes the selected content strong.
 //
 // **Keybindings:** Mod-B
-_model.StrongMark.register("command", "toggle", {
+_schema.StrongMark.register("command", "toggle", {
   derive: true,
   label: "Toggle strong",
   menu: {
@@ -4661,11 +4738,11 @@ _model.StrongMark.register("command", "toggle", {
 
 // ;; #path=em:set #kind=command
 // Add the [emphasis](#EmMark) mark to the selected content.
-_model.EmMark.register("command", "set", { derive: true, label: "Add emphasis" });
+_schema.EmMark.register("command", "set", { derive: true, label: "Add emphasis" });
 
 // ;; #path=em:unset #kind=command
 // Remove the [emphasis](#EmMark) mark from the selected content.
-_model.EmMark.register("command", "unset", { derive: true, label: "Remove emphasis" });
+_schema.EmMark.register("command", "unset", { derive: true, label: "Remove emphasis" });
 
 // ;; #path=em:toggle #kind=command
 // Toggle the [emphasis](#EmMark) mark. If there is any emphasized
@@ -4676,7 +4753,7 @@ _model.EmMark.register("command", "unset", { derive: true, label: "Remove emphas
 // makes the selected content emphasized.
 //
 // **Keybindings:** Mod-I
-_model.EmMark.register("command", "toggle", {
+_schema.EmMark.register("command", "toggle", {
   derive: true,
   label: "Toggle emphasis",
   menu: {
@@ -4692,11 +4769,11 @@ _model.EmMark.register("command", "toggle", {
 
 // ;; #path=code:set #kind=command
 // Add the [code](#CodeMark) mark to the selected content.
-_model.CodeMark.register("command", "set", { derive: true, label: "Set code style" });
+_schema.CodeMark.register("command", "set", { derive: true, label: "Set code style" });
 
 // ;; #path=code:unset #kind=command
 // Remove the [code](#CodeMark) mark from the selected content.
-_model.CodeMark.register("command", "unset", { derive: true, label: "Remove code style" });
+_schema.CodeMark.register("command", "unset", { derive: true, label: "Remove code style" });
 
 // ;; #path=code:toggle #kind=command
 // Toggle the [code](#CodeMark) mark. If there is any code-styled
@@ -4707,7 +4784,7 @@ _model.CodeMark.register("command", "unset", { derive: true, label: "Remove code
 // styles the selected content as code.
 //
 // **Keybindings:** Mod-`
-_model.CodeMark.register("command", "toggle", {
+_schema.CodeMark.register("command", "toggle", {
   derive: true,
   label: "Toggle code style",
   menu: {
@@ -4732,7 +4809,7 @@ var linkIcon = {
 // selection, from the [active marks](#ProseMirror.activeMarks). Will
 // only [select](#Command.select) itself when there is a link in the
 // selection or active marks.
-_model.LinkMark.register("command", "unset", {
+_schema.LinkMark.register("command", "unset", {
   derive: true,
   label: "Unlink",
   menu: { group: "inline", rank: 30, display: linkIcon },
@@ -4754,7 +4831,7 @@ _model.LinkMark.register("command", "unset", {
 //
 // Only selects itself when `unlink` isn't selected, so that only one
 // of the two is visible in the menu at any time.
-_model.LinkMark.register("command", "set", {
+_schema.LinkMark.register("command", "set", {
   derive: {
     inverseSelect: true,
     params: [{ label: "Target", attr: "href" }, { label: "Title", attr: "title" }]
@@ -4777,11 +4854,11 @@ _model.LinkMark.register("command", "set", {
 //
 // **`title`**`: string`
 //   : A title for the image.
-_model.Image.register("command", "insert", {
+_schema.Image.register("command", "insert", {
   derive: {
     params: [{ label: "Image URL", attr: "src" }, { label: "Description / alternative text", attr: "alt",
       prefill: function prefill(pm) {
-        return (0, _command.selectedNodeAttr)(pm, this, "alt") || (0, _format.toText)(pm.doc.cut(pm.selection.from, pm.selection.to));
+        return (0, _command.selectedNodeAttr)(pm, this, "alt") || pm.doc.textBetween(pm.selection.from, pm.selection.to, " ");
       } }, { label: "Title", attr: "title" }]
   },
   label: "Insert image",
@@ -4795,7 +4872,7 @@ _model.Image.register("command", "insert", {
 // Wrap the selection in a bullet list.
 //
 // **Keybindings:** Shift-Ctrl-8
-_model.BulletList.register("command", "wrap", {
+_schema.BulletList.register("command", "wrap", {
   derive: { list: true },
   label: "Wrap the selection in a bullet list",
   menu: {
@@ -4813,7 +4890,7 @@ _model.BulletList.register("command", "wrap", {
 // Wrap the selection in an ordered list.
 //
 // **Keybindings:** Shift-Ctrl-9
-_model.OrderedList.register("command", "wrap", {
+_schema.OrderedList.register("command", "wrap", {
   derive: { list: true },
   label: "Wrap the selection in an ordered list",
   menu: {
@@ -4831,7 +4908,7 @@ _model.OrderedList.register("command", "wrap", {
 // Wrap the selection in a block quote.
 //
 // **Keybindings:** Shift-Ctrl-.
-_model.BlockQuote.register("command", "wrap", {
+_schema.BlockQuote.register("command", "wrap", {
   derive: true,
   label: "Wrap the selection in a block quote",
   menu: {
@@ -4852,7 +4929,7 @@ _model.BlockQuote.register("command", "wrap", {
 // inserted instead.
 //
 // **Keybindings:** Mod-Enter, Shift-Enter
-_model.HardBreak.register("command", "insert", {
+_schema.HardBreak.register("command", "insert", {
   label: "Insert hard break",
   run: function run(pm) {
     var _pm$selection = pm.selection;
@@ -4871,7 +4948,7 @@ _model.HardBreak.register("command", "insert", {
 // item, split that child and the list item, and delete the selection.
 //
 // **Keybindings:** Enter
-_model.ListItem.register("command", "split", {
+_schema.ListItem.register("command", "split", {
   label: "Split the current list item",
   run: function run(pm) {
     var _pm$selection2 = pm.selection;
@@ -4911,7 +4988,7 @@ function selectedListItems(pm, type) {
 // Lift a list item into a parent list.
 //
 // **Keybindings:** Mod-[
-_model.ListItem.register("command", "lift", {
+_schema.ListItem.register("command", "lift", {
   label: "Lift the selected list items to an outer list",
   run: function run(pm) {
     var selected = selectedListItems(pm, this);
@@ -4932,7 +5009,7 @@ _model.ListItem.register("command", "lift", {
 // Move a list item into a sublist.
 //
 // **Keybindings:** Mod-]
-_model.ListItem.register("command", "sink", {
+_schema.ListItem.register("command", "sink", {
   label: "Sink the selected list items into an inner list",
   run: function run(pm) {
     var selected = selectedListItems(pm, this);
@@ -4942,9 +5019,10 @@ _model.ListItem.register("command", "sink", {
     if (startIndex == 0) return false;
     var parent = $from.node(selected.depth - 1),
         before = parent.child(startIndex - 1);
-    var tr = pm.tr.wrap(selected.from, selected.to, parent.type, parent.attrs);
-    if (before.type == this) tr.join(selected.from, before.lastChild && before.lastChild.type == parent.type ? 2 : 1);
-    return tr.apply(pm.apply.scroll);
+    if (before.type != this) return false;
+    var nestedBefore = before.lastChild && before.lastChild.type == parent.type;
+    var slice = new _model.Slice(_model.Fragment.from(this.create(null, parent.type.create(parent.attrs))), nestedBefore ? 2 : 1, 0);
+    return pm.tr.step(new _transform.ReplaceAroundStep(selected.from - (nestedBefore ? 2 : 1), selected.to, selected.from, selected.to, slice, nestedBefore ? 0 : 1, true)).apply(pm.apply.scroll);
   },
 
   keys: ["Mod-](20)"]
@@ -4956,7 +5034,7 @@ var _loop = function _loop(i) {
   // selection to become headers with the given level.
   //
   // **Keybindings:** Shift-Ctrl-1 through Shift-Ctrl-6
-  _model.Heading.registerComputed("command", "make" + i, function (type) {
+  _schema.Heading.registerComputed("command", "make" + i, function (type) {
     var attrs = { level: i };
     if (i <= type.maxLevel) return {
       derive: { name: "make", attrs: attrs },
@@ -4977,7 +5055,7 @@ for (var i = 1; i <= 10; i++) {
 // Set the textblocks in the selection to be regular paragraphs.
 //
 // **Keybindings:** Shift-Ctrl-0
-_model.Paragraph.register("command", "make", {
+_schema.Paragraph.register("command", "make", {
   derive: true,
   label: "Change to paragraph",
   keys: ["Shift-Ctrl-0"],
@@ -4992,7 +5070,7 @@ _model.Paragraph.register("command", "make", {
 // Set the textblocks in the selection to be code blocks.
 //
 // **Keybindings:** Shift-Ctrl-\
-_model.CodeBlock.register("command", "make", {
+_schema.CodeBlock.register("command", "make", {
   derive: true,
   label: "Change to code block",
   keys: ["Shift-Ctrl-\\"],
@@ -5007,13 +5085,13 @@ _model.CodeBlock.register("command", "make", {
 // Replace the selection with a horizontal rule.
 //
 // **Keybindings:** Mod-Shift-Minus
-_model.HorizontalRule.register("command", "insert", {
+_schema.HorizontalRule.register("command", "insert", {
   derive: true,
   label: "Insert horizontal rule",
   keys: ["Mod-Shift--"],
   menu: { group: "insert", rank: 70, display: { type: "label", label: "Horizontal rule" } }
 });
-},{"../format":21,"../model":29,"../transform":35,"./command":5}],17:[function(require,module,exports){
+},{"../model":26,"../schema":32,"../transform":33,"./command":5}],18:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -5527,7 +5605,7 @@ function verticalMotionLeavesTextblock(pm, pos, dir) {
   }
   return true;
 }
-},{"../dom":1,"./dompos":8}],18:[function(require,module,exports){
+},{"../dom":1,"./dompos":8}],19:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -5652,29 +5730,70 @@ var EditorTransform = exports.EditorTransform = function (_Transform) {
 
   return EditorTransform;
 }(_transform.Transform);
-},{"../model":29,"../transform":35}],19:[function(require,module,exports){
+},{"../model":26,"../transform":33}],20:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
+var _parse = require("./parse");
+
+Object.defineProperty(exports, "fromDOM", {
+  enumerable: true,
+  get: function get() {
+    return _parse.fromDOM;
+  }
+});
+Object.defineProperty(exports, "fromHTML", {
+  enumerable: true,
+  get: function get() {
+    return _parse.fromHTML;
+  }
+});
+Object.defineProperty(exports, "fromDOMInContext", {
+  enumerable: true,
+  get: function get() {
+    return _parse.fromDOMInContext;
+  }
+});
+
+var _serialize = require("./serialize");
+
+Object.defineProperty(exports, "toDOM", {
+  enumerable: true,
+  get: function get() {
+    return _serialize.toDOM;
+  }
+});
+Object.defineProperty(exports, "toHTML", {
+  enumerable: true,
+  get: function get() {
+    return _serialize.toHTML;
+  }
+});
+Object.defineProperty(exports, "nodeToDOM", {
+  enumerable: true,
+  get: function get() {
+    return _serialize.nodeToDOM;
+  }
+});
+},{"./parse":21,"./serialize":22}],21:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _slicedToArray = function () { function sliceIterator(arr, i) { var _arr = []; var _n = true; var _d = false; var _e = undefined; try { for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) { _arr.push(_s.value); if (i && _arr.length === i) break; } } catch (err) { _d = true; _e = err; } finally { try { if (!_n && _i["return"]) _i["return"](); } finally { if (_d) throw _e; } } return _arr; } return function (arr, i) { if (Array.isArray(arr)) { return arr; } else if (Symbol.iterator in Object(arr)) { return sliceIterator(arr, i); } else { throw new TypeError("Invalid attempt to destructure non-iterable instance"); } }; }();
+
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
 exports.fromDOM = fromDOM;
+exports.fromDOMInContext = fromDOMInContext;
 exports.fromHTML = fromHTML;
 
 var _model = require("../model");
-
-var _sortedinsert = require("../util/sortedinsert");
-
-var _sortedinsert2 = _interopRequireDefault(_sortedinsert);
-
-var _register = require("./register");
-
-var _comparedeep = require("../util/comparedeep");
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -5683,106 +5802,294 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 // parent document (for example, when not in a browser window
 // environment, where we simply use the global document), pass it as
 // the `document` property of `options`.
-function fromDOM(schema, dom, options) {
-  if (!options) options = {};
-  var context = new DOMParseState(schema, options.topNode || schema.node("doc"), options);
+function fromDOM(schema, dom) {
+  var options = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
+
+  var topNode = options.topNode;
+  var top = new NodeBuilder(topNode ? topNode.type : schema.nodes.doc, topNode ? topNode.attrs : null, true);
+  var context = new DOMParseState(schema, options, top);
   var start = options.from ? dom.childNodes[options.from] : dom.firstChild;
   var end = options.to != null && dom.childNodes[options.to] || null;
-  context.addAll(start, end, true);
-  var doc = void 0;
-  do {
-    doc = context.leave();
-  } while (context.stack.length);
-  return doc;
+  context.addAll(start, end);
+  return top.finish();
 }
 
-// ;; #path=DOMParseSpec #kind=interface
-// To define the way [node](#NodeType) and [mark](#MarkType) types are
-// parsed, you can associate one or more DOM parsing specifications to
-// them using the [`register`](#SchemaItem.register) method with the
-// `"parseDOM"` namespace, using the HTML node name (lowercase) as
-// value name. Each of them defines a parsing strategy for a certain
-// type of DOM node. When `"_"` is used as name, the parser is
-// activated for all nodes.
+// :: (ResolvedPos, DOMNode, number, number, ?Object) → Slice
+// Parse a DOM fragment into a `Slice`, starting with the context at
+// `$context`. If the DOM nodes are known to be 'open' (as in
+// `Slice`), pass their open depth as `openLeft` and `openRight`.
+function fromDOMInContext($context, dom) {
+  var options = arguments.length <= 2 || arguments[2] === undefined ? {} : arguments[2];
 
-// :: ?number #path=DOMParseSpec.rank
-// The precedence of this parsing strategy. Should be a number between
-// 0 and 100, which determines when this parser gets a chance relative
-// to others that apply to the node (low ranks go first). Defaults to
-// 50.
+  var _builderFromContext = builderFromContext($context, dom);
 
-// :: union<string, (dom: DOMNode, state: DOMParseState) → ?bool> #path=DOMParseSpec.parse
-// The function that, given a DOM node, parses it, updating the parse
-// state. It should return (the exact value) `false` when it wants to
-// indicate that it was not able to parse this node. This function is
-// called in such a way that `this` is bound to the type that the
-// parse spec was associated with.
-//
-// When this is set to the string `"block"`, the content of the DOM
-// node is parsed as the content in a node of the type that this spec
-// was associated with.
-//
-// When set to the string `"mark"`, the content of the DOM node is
-// parsed with an instance of the mark that this spec was associated
-// with added to their marks.
+  var builder = _builderFromContext.builder;
+  var top = _builderFromContext.top;
+  var left = _builderFromContext.left;
 
-// :: ?string #path=DOMParseSpec.selector
-// A css selector to match against. If present, it will try to match the selector
-// against the dom node prior to calling the parse function.
+  var context = new DOMParseState($context.node(0).type.schema, options, builder);
+  context.addAll(dom.firstChild, null);
 
-(0, _register.defineSource)("dom", fromDOM);
-
-var NodeBuilder = function () {
-  function NodeBuilder(type, attrs) {
-    _classCallCheck(this, NodeBuilder);
-
-    this.type = type;
-    this.pos = type.contentExpr.start(attrs);
-    this.content = [];
+  var openLeft = options.openLeft != null ? options.openLeft : left && left.isTextblock ? 1 : 0;
+  var openRight = options.openRight;
+  if (openRight == null) {
+    var right = parseInfoAtSide(top.type.schema, dom, 1);
+    openRight = right && right.isTextblock ? 1 : 0;
   }
 
-  _createClass(NodeBuilder, [{
-    key: "add",
-    value: function add(node) {
-      var _this = this;
+  var openTo = Math.min(top.openDepth, builder.depth + openRight);
+  var doc = top.finish(openTo),
+      maxOpenLeft = 0;
+  for (var node = doc.firstChild; node && !node.type.isLeaf; node = node.firstChild) {
+    ++maxOpenLeft;
+  }return doc.slice(Math.min(builder.depth + openLeft, maxOpenLeft), doc.content.size - openTo);
+}
 
-      var matched = this.pos.matchNode(node);
-      if (!matched && node.marks.length) {
-        node = node.mark(node.marks.filter(function (mark) {
-          return _this.pos.allowsMark(mark.type);
-        }));
-        matched = this.pos.matchNode(node);
+function builderFromContext($context, dom) {
+  var topNode = $context.node(0),
+      matches = [];
+  for (var i = 0; i < $context.depth; i++) {
+    matches.push($context.node(i).contentMatchAt($context.indexAfter(i)));
+  }var left = parseInfoAtSide(topNode.type.schema, dom, -1),
+      start = $context.depth,
+      wrap = [];
+  search: if (left) {
+    for (var _i = matches.length - 1; _i >= 0; _i--) {
+      if (matches[_i].matchType(left.type, left.attrs, noMarks)) {
+        start = _i;
+        break search;
       }
-      if (!matched) return false;
-      this.content.push(node);
-      this.pos = matched;
-      return true;
+    }for (var _i2 = matches.length - 1, wrapping; _i2 >= 0; _i2--) {
+      if (wrapping = matches[_i2].findWrapping(left.type, left.attrs)) {
+        start = _i2;
+        wrap = wrapping;
+        break search;
+      }
     }
-  }, {
-    key: "finish",
-    value: function finish() {
-      var fill = this.pos.fillBefore(_model.Fragment.empty, true);
-      if (!fill) return null;
-      return this.type.create(this.pos.attrs, _model.Fragment.from(this.content).append(fill));
-    }
-  }]);
+  }
+  var top = new NodeBuilder(topNode.type, topNode.attrs, true),
+      builder = top;
+  for (var _i3 = 1; _i3 <= start; _i3++) {
+    var node = $context.node(_i3);
+    builder = builder.start(node.type, node.attrs, true, matches[_i3]);
+  }
+  for (var _i4 = 0; _i4 < wrap.length; _i4++) {
+    builder = builder.start(wrap[_i4].type, wrap[_i4].attrs, false);
+  }return { builder: builder, top: top, left: left };
+}
 
-  return NodeBuilder;
-}();
+function parseInfoAtSide(schema, dom, side) {
+  var info = schemaInfo(schema).selectors;
+  for (var cur = dom, next;; cur = next) {
+    next = cur && (side > 0 ? cur.lastChild || cur.previousSibling : cur.firstChild || cur.nextSibling);
+    if (!next && cur != dom) next = side > 0 ? cur.parentNode.previousSibling : cur.parentNode.nextSibling;
+    if (!next) return null;
+    if (next.nodeType == 1) {
+      var result = matchTag(info, next);
+      if (result && result.type instanceof _model.NodeType) return result.type.create(result.attrs);
+    }
+    cur = next;
+  }
+}
 
 // :: (Schema, string, ?Object) → Node
 // Parses the HTML into a DOM, and then calls through to `fromDOM`.
-
-
 function fromHTML(schema, html, options) {
   var wrap = (options && options.document || window.document).createElement("div");
   wrap.innerHTML = html;
   return fromDOM(schema, wrap, options);
 }
 
-(0, _register.defineSource)("html", fromHTML);
+// :: union<?Object, [?Object, {content: ?union<bool, DOMNode>, preserveWhiteSpace: ?bool}]>
+// #path=ParseSpec #kind=interface
+// A value that describes how to parse a given DOM node as a
+// ProseMirror node or mark type. Specifies the attributes of the new
+// node or mark, along with optional information about the way the
+// node's content should be treated.
+//
+// May either be a set of attributes, where `null` indicates the
+// node's default attributes, or an array containing first a set of
+// attributes and then an object describing the treatment of the
+// node's content. If the `content` property is `false`, the content
+// will be ignored. If it is not given, the DOM node's children will
+// be parsed as content of the ProseMirror node or mark. If it is a
+// DOM node, that DOM node's content is treated as the content of the
+// new node or mark (this is useful if, for example, your DOM
+// representation puts its child nodes in an inner wrapping node). You
+// can set `preserveWhiteSpace` to a boolean to enable or disable
+// preserving of whitespace when parsing the content.
 
-var blockElements = {
+// :: Object<union<ParseSpec, (DOMNode) → union<bool, ParseSpec>>> #path=NodeType.prototype.matchDOMTag
+// Defines the way nodes of this type are parsed. Should contain an
+// object mapping CSS selectors (such as `"p"` for `<p>` tags, or
+// `div[data-type="foo"]` for `<div>` tags with a specific attribute)
+// to [parse specs](#ParseSpec) or functions that, when given a DOM
+// node, return either `false` or a parse spec.
+
+// :: Object<union<ParseSpec, (DOMNode) → union<bool, ParseSpec>>> #path=MarkType.prototype.matchDOMTag
+// Defines the way marks of this type are parsed. Works just like
+// `NodeType.matchTag`, but produces marks rather than nodes.
+
+// :: Object<union<?Object, (string) → union<bool, ?Object>>> #path=MarkType.prototype.matchDOMStyle
+// Defines the way DOM styles are mapped to marks of this type. Should
+// contain an object mapping CSS property names, as found in inline
+// styles, to either attributes for this mark (null for default
+// attributes), or a function mapping the style's value to either a
+// set of attributes or `false` to indicate that the style does not
+// match.
+
+var NodeBuilder = function () {
+  function NodeBuilder(type, attrs, solid, prev, match) {
+    _classCallCheck(this, NodeBuilder);
+
+    // : NodeType
+    // The type of the node being built
+    this.type = type;
+    // : ContentMatch
+    // The content match at this point, used to determine whether
+    // other nodes may be added here.
+    this.match = match || type.contentExpr.start(attrs);
+    // : bool
+    // True when the node is found in the source, and thus should be
+    // preserved until its end. False when it was made up to provide a
+    // wrapper for another node.
+    this.solid = solid;
+    // : [Node]
+    // The nodes that have been added so far.
+    this.content = [];
+    // : ?NodeBuilder
+    // The builder for the parent node, if any.
+    this.prev = prev;
+    // : ?NodeBuilder
+    // The builder for the last child, if that is still open (see
+    // `NodeBuilder.start`)
+    this.openChild = null;
+  }
+
+  // : (Node) → ?Node
+  // Try to add a node. Strip it of marks if necessary. Returns null
+  // when the node doesn't fit here.
+
+
+  _createClass(NodeBuilder, [{
+    key: "add",
+    value: function add(node) {
+      var _this = this;
+
+      var matched = this.match.matchNode(node);
+      if (!matched && node.marks.length) {
+        node = node.mark(node.marks.filter(function (mark) {
+          return _this.match.allowsMark(mark.type);
+        }));
+        matched = this.match.matchNode(node);
+      }
+      if (!matched) return null;
+      this.closeChild();
+      this.content.push(node);
+      this.match = matched;
+      return node;
+    }
+
+    // : (NodeType, ?Object, bool, ?ContentMatch) → ?NodeBuilder
+    // Try to start a new node at this point.
+
+  }, {
+    key: "start",
+    value: function start(type, attrs, solid, match) {
+      var matched = this.match.matchType(type, attrs, noMarks);
+      if (!matched) return null;
+      this.closeChild();
+      this.match = matched;
+      return this.openChild = new NodeBuilder(type, attrs, solid, this, match);
+    }
+  }, {
+    key: "closeChild",
+    value: function closeChild(openRight) {
+      if (this.openChild) {
+        this.content.push(this.openChild.finish(openRight && openRight - 1));
+        this.openChild = null;
+      }
+    }
+
+    // : ()
+    // Strip any trailing space text from the builder's content.
+
+  }, {
+    key: "stripTrailingSpace",
+    value: function stripTrailingSpace() {
+      if (this.openChild) return;
+      var last = this.content[this.content.length - 1],
+          m = void 0;
+      if (last && last.isText && (m = /\s+$/.exec(last.text))) {
+        if (last.text.length == m[0].length) this.content.pop();else this.content[this.content.length - 1] = last.copy(last.text.slice(0, last.text.length - m[0].length));
+      }
+    }
+
+    // : (?number) → Node
+    // Finish this node. If `openRight` is > 0, the node (and `openRight
+    // - 1` last children) is partial, and we don't need to 'close' it
+    // by filling in required content.
+
+  }, {
+    key: "finish",
+    value: function finish(openRight) {
+      this.closeChild(openRight);
+      var content = _model.Fragment.from(this.content);
+      if (!openRight) content = content.append(this.match.fillBefore(_model.Fragment.empty, true));
+      return this.type.create(this.match.attrs, content);
+    }
+
+    // : (NodeType, ?Object, ?Node) → ?NodeBuilder
+    // Try to find a valid place to add a node with the given type and
+    // attributes. When successful, if `node` was given, add it in its
+    // entirety and return the builder to which it was added. If not,
+    // start a node of the given type and return the builder for it.
+
+  }, {
+    key: "findPlace",
+    value: function findPlace(type, attrs, node) {
+      for (var top = this;; top = top.prev) {
+        var ok = node ? top.add(node) && top : top.start(type, attrs, true);
+        if (ok) return ok;
+        if (top.solid) break;
+      }
+
+      for (var _top = this;; _top = _top.prev) {
+        var route = _top.match.findWrapping(type, attrs);
+        if (route) {
+          for (var i = 0; i < route.length; i++) {
+            _top = _top.start(route[i].type, route[i].attrs, false);
+          }return node ? _top.add(node) && _top : _top.start(type, attrs, true);
+        } else if (_top.solid) {
+          return null;
+        }
+      }
+    }
+  }, {
+    key: "depth",
+    get: function get() {
+      var d = 0;
+      for (var b = this.prev; b; b = b.prev) {
+        d++;
+      }return d;
+    }
+  }, {
+    key: "openDepth",
+    get: function get() {
+      var d = 0;
+      for (var c = this.openChild; c; c = c.openChild) {
+        d++;
+      }return d;
+    }
+  }]);
+
+  return NodeBuilder;
+}();
+
+// : Object<bool> The block-level tags in HTML5
+
+
+var blockTags = {
   address: true, article: true, aside: true, blockquote: true, canvas: true,
   dd: true, div: true, dl: true, fieldset: true, figcaption: true, figure: true,
   footer: true, form: true, h1: true, h2: true, h3: true, h4: true, h5: true,
@@ -5790,48 +6097,66 @@ var blockElements = {
   output: true, p: true, pre: true, section: true, table: true, tfoot: true, ul: true
 };
 
-var ignoreElements = {
+// : Object<bool> The tags that we normally ignore.
+var ignoreTags = {
   head: true, noscript: true, object: true, script: true, style: true, title: true
 };
 
-var listElements = { ol: true, ul: true };
+// : Object<bool> List tags.
+var listTags = { ol: true, ul: true };
 
 var noMarks = [];
 
-// ;; A state object used to track context during a parse,
-// and to expose methods to custom parsing functions.
+// A state object used to track context during a parse.
 
 var DOMParseState = function () {
-  function DOMParseState(schema, topNode, options) {
+  // : (Schema, Object, NodeBuilder)
+
+  function DOMParseState(schema, options, top) {
     _classCallCheck(this, DOMParseState);
 
-    // :: Object The options passed to this parse.
+    // : Object The options passed to this parse.
     this.options = options || {};
-    // :: Schema The schema that we are parsing into.
+    // : Schema The schema that we are parsing into.
     this.schema = schema;
-    this.stack = [];
+    this.top = top;
+    // : [Mark] The current set of marks
     this.marks = noMarks;
-    this.closing = false;
-    this.enter(topNode.type, topNode.attrs);
-    var info = schemaInfo(schema);
-    this.tagInfo = info.tags;
-    this.styleInfo = info.styles;
+    // : bool Whether to preserve whitespace
+    this.preserveWhitespace = this.options.preserveWhitespace;
+    this.info = schemaInfo(schema);
   }
 
+  // : (Mark) → [Mark]
+  // Add a mark to the current set of marks, return the old set.
+
+
   _createClass(DOMParseState, [{
+    key: "addMark",
+    value: function addMark(mark) {
+      var old = this.marks;
+      this.marks = mark.addToSet(this.marks);
+      return old;
+    }
+
+    // : (DOMNode)
+    // Add a DOM node to the content. Text is inserted as text node,
+    // otherwise, the node is passed to `addElement` or, if it has a
+    // `style` attribute, `addElementWithStyles`.
+
+  }, {
     key: "addDOM",
     value: function addDOM(dom) {
       if (dom.nodeType == 3) {
         var value = dom.nodeValue;
-        var top = this.top,
-            last = void 0;
+        var top = this.top;
         if (/\S/.test(value) || top.type.isTextblock) {
-          if (!this.options.preserveWhitespace) {
+          if (!this.preserveWhitespace) {
             value = value.replace(/\s+/g, " ");
             // If this starts with whitespace, and there is either no node
             // before it or a node that ends with whitespace, strip the
             // leading space.
-            if (/^\s/.test(value) && (!(last = top.content[top.content.length - 1]) || last.type.name == "text" && /\s$/.test(last.text))) value = value.slice(1);
+            if (/^\s/.test(value)) top.stripTrailingSpace();
           }
           if (value) this.insertNode(this.schema.text(value, this.marks));
         }
@@ -5840,106 +6165,106 @@ var DOMParseState = function () {
         if (style) this.addElementWithStyles(parseStyles(style), dom);else this.addElement(dom);
       }
     }
+
+    // : (DOMNode)
+    // Try to find a handler for the given tag and use that to parse. If
+    // none is found, the element's content nodes are added directly.
+
   }, {
     key: "addElement",
     value: function addElement(dom) {
       var name = dom.nodeName.toLowerCase();
-      if (listElements.hasOwnProperty(name)) this.normalizeList(dom);
+      if (listTags.hasOwnProperty(name)) this.normalizeList(dom);
       // Ignore trailing BR nodes, which browsers create during editing
       if (this.options.editableContent && name == "br" && !dom.nextSibling) return;
-      if (!this.parseNodeType(name, dom) && !ignoreElements.hasOwnProperty(name)) {
+      if (!this.parseNodeType(dom, name) && !ignoreTags.hasOwnProperty(name)) {
+        var sync = blockTags.hasOwnProperty(name) && this.top;
         this.addAll(dom.firstChild, null);
-        if (blockElements.hasOwnProperty(name)) this.closing = true;
+        if (sync) this.sync(sync);
       }
     }
+
+    // Run any style parser associated with the node's styles. After
+    // that, if no style parser suppressed the node's content, pass it
+    // through to `addElement`.
+
   }, {
     key: "addElementWithStyles",
     value: function addElementWithStyles(styles, dom) {
-      var _this2 = this;
-
-      var wrappers = [];
+      var oldMarks = this.marks,
+          marks = this.marks;
       for (var i = 0; i < styles.length; i += 2) {
-        var parsers = this.styleInfo[styles[i]],
-            value = styles[i + 1];
-        if (parsers) for (var j = 0; j < parsers.length; j++) {
-          wrappers.push(parsers[j], value);
-        }
+        var result = matchStyle(this.info.styles, styles[i], styles[i + 1]);
+        if (!result) continue;
+        if (result.attrs === false) return;
+        marks = result.type.create(result.attrs).addToSet(marks);
       }
-      var next = function next(i) {
-        if (i == wrappers.length) {
-          _this2.addElement(dom);
-        } else {
-          var parser = wrappers[i];
-          parser.parse.call(parser.type, wrappers[i + 1], _this2, next.bind(null, i + 2));
-        }
-      };
-      next(0);
+      this.marks = marks;
+      this.addElement(dom);
+      this.marks = oldMarks;
     }
-  }, {
-    key: "tryParsers",
-    value: function tryParsers(parsers, dom) {
-      if (parsers) for (var i = 0; i < parsers.length; i++) {
-        var parser = parsers[i];
-        if ((!parser.selector || matches(dom, parser.selector)) && parser.parse.call(parser.type, dom, this) !== false) return true;
-      }
-    }
+
+    // (DOMNode, string) → bool
+    // Look up a handler for the given node. If none are found, return
+    // false. Otherwise, apply it, use its return value to drive the way
+    // the node's content is wrapped, and return true.
+
   }, {
     key: "parseNodeType",
-    value: function parseNodeType(name, dom) {
-      return this.tryParsers(this.tagInfo[name], dom) || this.tryParsers(this.tagInfo._, dom);
+    value: function parseNodeType(dom) {
+      var result = matchTag(this.info.selectors, dom);
+      if (!result) return false;
+
+      var isNode = result.type instanceof _model.NodeType,
+          sync = void 0,
+          before = void 0;
+      if (isNode) sync = this.enter(result.type, result.attrs);else before = this.addMark(result.type.create(result.attrs));
+
+      var contentNode = dom,
+          preserve = null,
+          prevPreserve = this.preserveWhitespace;
+      if (result.content) {
+        if (result.content.content === false) contentNode = null;else if (result.content.content) contentNode = result.content.content;
+        preserve = result.content.preserveWhitespace;
+      }
+
+      if (contentNode) {
+        if (preserve != null) this.preserveWhitespace = preserve;
+        this.addAll(contentNode.firstChild, null, sync);
+        if (sync) this.sync(sync.prev);else if (before) this.marks = before;
+        if (preserve != null) this.preserveWhitespace = prevPreserve;
+      }
+      return true;
     }
+
+    // : (?DOMNode, ?DOMNode, ?NodeBuilder)
+    // Add all nodes between `from` and `to` (via `nextSibling`). If
+    // `sync` is passed, use it to synchronize after every block
+    // element.
+
   }, {
     key: "addAll",
     value: function addAll(from, to, sync) {
-      var stack = sync && this.stack.slice(),
-          needsSync = false;
       for (var dom = from; dom != to; dom = dom.nextSibling) {
         this.addDOM(dom);
-        if (sync) {
-          var isBlock = blockElements.hasOwnProperty(dom.nodeName.toLowerCase());
-          if (isBlock) this.sync(stack);
-          needsSync = !isBlock;
-        }
+        if (sync && blockTags.hasOwnProperty(dom.nodeName.toLowerCase())) this.sync(sync);
       }
-      if (needsSync) this.sync(stack);
     }
-  }, {
-    key: "doClose",
-    value: function doClose() {
-      if (!this.closing || this.stack.length < 2) return;
-      var left = this.leave();
-      this.enter(left.type, left.attrs);
-      this.closing = false;
-    }
+
+    // : (Node) → ?Node
+    // Try to insert the given node, adjusting the context when needed.
+
   }, {
     key: "insertNode",
     value: function insertNode(node) {
-      var added = this.top.add(node);
-      if (added) return added;
-
-      var found = void 0;
-      for (var i = this.stack.length - 1; i >= 0; i--) {
-        var builder = this.stack[i];
-        var route = builder.type.findWrapping(node.type, builder.pos);
-        if (!route) continue;
-        if (i == this.stack.length - 1) {
-          this.doClose();
-        } else {
-          while (this.stack.length > i + 1) {
-            this.leave();
-          }
-        }
-        found = route;
-        break;
+      var ok = this.top.findPlace(node.type, node.attrs, node);
+      if (ok) {
+        this.sync(ok);
+        return true;
       }
-      if (!found) return;
-      for (var j = 0; j < found.length; j++) {
-        this.enter(found[j]);
-      }if (this.marks.length) this.marks = noMarks;
-      return this.top.add(node);
     }
 
-    // :: (NodeType, ?Object, [Node]) → ?Node
+    // : (NodeType, ?Object, [Node]) → ?Node
     // Insert a node of the given type, with the given content, based on
     // `dom`, at the current position in the document.
 
@@ -5948,94 +6273,73 @@ var DOMParseState = function () {
     value: function insert(type, attrs, content) {
       var frag = type.fixContent(_model.Fragment.from(content), attrs);
       if (!frag) return null;
-      return this.insertNode(type.create(attrs, frag, this.marks));
+      this.insertNode(type.create(attrs, frag, type.isInline ? this.marks : null));
     }
+
+    // : (NodeType, ?Object) → ?NodeBuilder
+    // Try to start a node of the given type, adjusting the context when
+    // necessary.
+
   }, {
     key: "enter",
     value: function enter(type, attrs) {
-      this.stack.push(new NodeBuilder(type, attrs));
+      var ok = this.top.findPlace(type, attrs);
+      if (ok) {
+        this.sync(ok);
+        return ok;
+      }
     }
+
+    // : ()
+    // Leave the node currently at the top.
+
   }, {
     key: "leave",
     value: function leave() {
-      if (this.marks.length) this.marks = noMarks;
-      var top = this.stack.pop();
-      var last = top.content[top.content.length - 1];
-      if (!this.options.preserveWhitespace && last && last.isText && /\s$/.test(last.text)) {
-        if (last.text.length == 1) top.content.pop();else top.content[top.content.length - 1] = last.copy(last.text.slice(0, last.text.length - 1));
-      }
-      var node = top.finish();
-      if (node && this.stack.length) this.insertNode(node);
-      return node;
+      if (!this.preserveWhitespace) this.top.stripTrailingSpace();
+      this.top = this.top.prev;
     }
   }, {
     key: "sync",
-    value: function sync(stack) {
-      while (this.stack.length > stack.length) {
-        this.leave();
-      }for (;;) {
-        var n = this.stack.length - 1,
-            one = this.stack[n],
-            two = stack[n];
-        if (one.type == two.type && (0, _comparedeep.compareDeep)(one.attrs, two.attrs)) break;
-        this.leave();
+    value: function sync(to) {
+      for (;;) {
+        for (var cur = to; cur; cur = cur.prev) {
+          if (cur == this.top) {
+            this.top = to;
+            return;
+          }
+        }this.leave();
       }
-      while (stack.length > this.stack.length) {
-        var add = stack[this.stack.length];
-        this.enter(add.type, add.attrs);
-      }
-      if (this.marks.length) this.marks = noMarks;
-      this.closing = false;
     }
 
-    // :: (DOMNode, NodeType, ?Object)
-    // Parse the contents of `dom` as children of a node of the given
-    // type.
+    // Kludge to work around directly nested list nodes produced by some
+    // tools and allowed by browsers to mean that the nested list is
+    // actually part of the list item above it.
 
-  }, {
-    key: "wrapIn",
-    value: function wrapIn(dom, type, attrs) {
-      this.enter(type, attrs);
-      this.addAll(dom.firstChild, null, true);
-      this.leave();
-    }
-
-    // :: (DOMNode, Mark)
-    // Parse the contents of `dom`, with `mark` added to the set of
-    // current marks.
-
-  }, {
-    key: "wrapMark",
-    value: function wrapMark(inner, mark) {
-      var old = this.marks;
-      this.marks = (mark.instance || mark).addToSet(old);
-      if (inner.call) inner();else this.addAll(inner.firstChild, null);
-      this.marks = old;
-    }
   }, {
     key: "normalizeList",
     value: function normalizeList(dom) {
       for (var child = dom.firstChild, prev; child; child = child.nextSibling) {
-        if (child.nodeType == 1 && listElements.hasOwnProperty(child.nodeName.toLowerCase()) && (prev = child.previousSibling)) {
+        if (child.nodeType == 1 && listTags.hasOwnProperty(child.nodeName.toLowerCase()) && (prev = child.previousSibling)) {
           prev.appendChild(child);
           child = prev;
         }
       }
-    }
-  }, {
-    key: "top",
-    get: function get() {
-      return this.stack[this.stack.length - 1];
     }
   }]);
 
   return DOMParseState;
 }();
 
+// Apply a CSS selector.
+
+
 function matches(dom, selector) {
   return (dom.matches || dom.msMatchesSelector || dom.webkitMatchesSelector || dom.mozMatchesSelector).call(dom, selector);
 }
 
+// : (string) → [string]
+// Tokenize a style attribute into property/value pairs.
 function parseStyles(style) {
   var re = /\s*([\w-]+)\s*:\s*([^;]+)/g,
       m = void 0,
@@ -6050,330 +6354,72 @@ function schemaInfo(schema) {
 }
 
 function summarizeSchemaInfo(schema) {
-  var tags = Object.create(null),
-      styles = Object.create(null);
-  tags._ = [];
-  schema.registry("parseDOM", function (tag, info, type) {
-    var parse = info.parse;
-    if (parse == "block") parse = function parse(dom, state) {
-      state.wrapIn(dom, this);
-    };else if (parse == "mark") parse = function parse(dom, state) {
-      state.wrapMark(dom, this);
-    };
-    (0, _sortedinsert2.default)(tags[tag] || (tags[tag] = []), {
-      type: type, parse: parse,
-      selector: info.selector,
-      rank: info.rank == null ? 50 : info.rank
-    }, function (a, b) {
-      return a.rank - b.rank;
-    });
-  });
-  schema.registry("parseDOMStyle", function (style, info, type) {
-    (0, _sortedinsert2.default)(styles[style] || (styles[style] = []), {
-      type: type,
-      parse: info.parse,
-      rank: info.rank == null ? 50 : info.rank
-    }, function (a, b) {
-      return a.rank - b.rank;
-    });
-  });
-  return { tags: tags, styles: styles };
+  var selectors = [],
+      styles = [];
+  for (var name in schema.nodes) {
+    var type = schema.nodes[name],
+        match = type.matchDOMTag;
+    if (match) for (var selector in match) {
+      selectors.push({ selector: selector, type: type, value: match[selector] });
+    }
+  }
+  for (var _name in schema.marks) {
+    var _type = schema.marks[_name],
+        _match = _type.matchDOMTag,
+        props = _type.matchDOMStyle;
+    if (_match) for (var _selector in _match) {
+      selectors.push({ selector: _selector, type: _type, value: _match[_selector] });
+    }if (props) for (var prop in props) {
+      styles.push({ prop: prop, type: _type, value: props[prop] });
+    }
+  }
+  return { selectors: selectors, styles: styles };
 }
 
-_model.Paragraph.register("parseDOM", "p", { parse: "block" });
-
-_model.BlockQuote.register("parseDOM", "blockquote", { parse: "block" });
-
-var _loop = function _loop(i) {
-  _model.Heading.registerComputed("parseDOM", "h" + i, function (type) {
-    if (i <= type.maxLevel) return {
-      parse: function parse(dom, state) {
-        state.wrapIn(dom, this, { level: i });
+function matchTag(selectors, dom) {
+  for (var i = 0; i < selectors.length; i++) {
+    var cur = selectors[i];
+    if (matches(dom, cur.selector)) {
+      var value = cur.value,
+          content = void 0;
+      if (value instanceof Function) {
+        value = value(dom);
+        if (value === false) continue;
       }
-    };
-  });
-};
+      if (Array.isArray(value)) {
+        ;var _value = value;
 
-for (var i = 1; i <= 6; i++) {
-  _loop(i);
-}_model.HorizontalRule.register("parseDOM", "hr", { parse: "block" });
+        var _value2 = _slicedToArray(_value, 2);
 
-_model.CodeBlock.register("parseDOM", "pre", {
-  parse: function parse(dom, state) {
-    var params = dom.firstChild && /^code$/i.test(dom.firstChild.nodeName) && dom.firstChild.getAttribute("class");
-    if (params && /fence/.test(params)) {
-      var found = [],
-          re = /(?:^|\s)lang-(\S+)/g,
-          m = void 0;
-      while (m = re.exec(params)) {
-        found.push(m[1]);
-      }params = found.join(" ");
-    } else {
-      params = null;
+        value = _value2[0];
+        content = _value2[1];
+      }
+      return { type: cur.type, attrs: value, content: content };
     }
-    var text = dom.textContent;
-    state.insert(this, { params: params }, text ? [state.schema.text(text)] : []);
   }
-});
+}
 
-_model.BulletList.register("parseDOM", "ul", { parse: "block" });
-
-_model.OrderedList.register("parseDOM", "ol", {
-  parse: function parse(dom, state) {
-    var start = dom.getAttribute("start");
-    var attrs = { order: start ? +start : 1 };
-    state.wrapIn(dom, this, attrs);
-  }
-});
-
-_model.ListItem.register("parseDOM", "li", { parse: "block" });
-
-_model.HardBreak.register("parseDOM", "br", {
-  parse: function parse(_, state) {
-    state.insert(this);
-  }
-});
-
-_model.Image.register("parseDOM", "img", {
-  parse: function parse(dom, state) {
-    state.insert(this, {
-      src: dom.getAttribute("src"),
-      title: dom.getAttribute("title") || null,
-      alt: dom.getAttribute("alt") || null
-    });
-  }
-});
-
-// Inline style tokens
-
-_model.LinkMark.register("parseDOM", "a", {
-  parse: function parse(dom, state) {
-    state.wrapMark(dom, this.create({ href: dom.getAttribute("href"),
-      title: dom.getAttribute("title") }));
-  },
-
-  selector: "[href]"
-});
-
-_model.EmMark.register("parseDOM", "i", { parse: "mark" });
-_model.EmMark.register("parseDOM", "em", { parse: "mark" });
-_model.EmMark.register("parseDOMStyle", "font-style", {
-  parse: function parse(value, state, inner) {
-    if (value == "italic") state.wrapMark(inner, this);else inner();
-  }
-});
-
-_model.StrongMark.register("parseDOM", "b", { parse: "mark" });
-_model.StrongMark.register("parseDOM", "strong", { parse: "mark" });
-_model.StrongMark.register("parseDOMStyle", "font-weight", {
-  parse: function parse(value, state, inner) {
-    if (value == "bold" || value == "bolder" || !/\D/.test(value) && +value >= 500) state.wrapMark(inner, this);else inner();
-  }
-});
-
-_model.CodeMark.register("parseDOM", "code", { parse: "mark" });
-},{"../model":29,"../util/comparedeep":45,"../util/sortedinsert":50,"./register":22}],20:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.fromText = fromText;
-
-var _register = require("./register");
-
-// FIXME is it meaningful to try and attach text-parsing information
-// to node types?
-
-// :: (Schema, string) → Node
-// Convert a string into a simple ProseMirror document.
-function fromText(schema, text) {
-  var blocks = text.trim().split(/\n{2,}/);
-  var nodes = [];
-  for (var i = 0; i < blocks.length; i++) {
-    var spans = [];
-    var parts = blocks[i].split("\n");
-    for (var j = 0; j < parts.length; j++) {
-      if (j) spans.push(schema.node("hard_break"));
-      if (parts[j]) spans.push(schema.text(parts[j]));
+function matchStyle(styles, prop, value) {
+  for (var i = 0; i < styles.length; i++) {
+    var cur = styles[i];
+    if (cur.prop == prop) {
+      var attrs = cur.value;
+      if (attrs instanceof Function) {
+        attrs = attrs(value);
+        if (attrs === false) continue;
+      }
+      return { type: cur.type, attrs: attrs };
     }
-    nodes.push(schema.node("paragraph", null, spans));
   }
-  if (!nodes.length) nodes.push(schema.node("paragraph"));
-  return schema.node("doc", null, nodes);
 }
-
-(0, _register.defineSource)("text", fromText);
-},{"./register":22}],21:[function(require,module,exports){
+},{"../model":26}],22:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
-var _register = require("./register");
-
-Object.defineProperty(exports, "serializeTo", {
-  enumerable: true,
-  get: function get() {
-    return _register.serializeTo;
-  }
-});
-Object.defineProperty(exports, "knownTarget", {
-  enumerable: true,
-  get: function get() {
-    return _register.knownTarget;
-  }
-});
-Object.defineProperty(exports, "defineTarget", {
-  enumerable: true,
-  get: function get() {
-    return _register.defineTarget;
-  }
-});
-Object.defineProperty(exports, "parseFrom", {
-  enumerable: true,
-  get: function get() {
-    return _register.parseFrom;
-  }
-});
-Object.defineProperty(exports, "knownSource", {
-  enumerable: true,
-  get: function get() {
-    return _register.knownSource;
-  }
-});
-Object.defineProperty(exports, "defineSource", {
-  enumerable: true,
-  get: function get() {
-    return _register.defineSource;
-  }
-});
-
-var _from_dom = require("./from_dom");
-
-Object.defineProperty(exports, "fromDOM", {
-  enumerable: true,
-  get: function get() {
-    return _from_dom.fromDOM;
-  }
-});
-Object.defineProperty(exports, "fromHTML", {
-  enumerable: true,
-  get: function get() {
-    return _from_dom.fromHTML;
-  }
-});
-
-var _to_dom = require("./to_dom");
-
-Object.defineProperty(exports, "toDOM", {
-  enumerable: true,
-  get: function get() {
-    return _to_dom.toDOM;
-  }
-});
-Object.defineProperty(exports, "toHTML", {
-  enumerable: true,
-  get: function get() {
-    return _to_dom.toHTML;
-  }
-});
-Object.defineProperty(exports, "nodeToDOM", {
-  enumerable: true,
-  get: function get() {
-    return _to_dom.nodeToDOM;
-  }
-});
-
-var _from_text = require("./from_text");
-
-Object.defineProperty(exports, "fromText", {
-  enumerable: true,
-  get: function get() {
-    return _from_text.fromText;
-  }
-});
-
-var _to_text = require("./to_text");
-
-Object.defineProperty(exports, "toText", {
-  enumerable: true,
-  get: function get() {
-    return _to_text.toText;
-  }
-});
-},{"./from_dom":19,"./from_text":20,"./register":22,"./to_dom":23,"./to_text":24}],22:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.serializeTo = serializeTo;
-exports.knownTarget = knownTarget;
-exports.defineTarget = defineTarget;
-exports.parseFrom = parseFrom;
-exports.knownSource = knownSource;
-exports.defineSource = defineSource;
-var serializers = Object.create(null);
-
-// :: (Node, string, ?Object) → any
-// Serialize the given document to the given format. If `options` is
-// given, it will be passed along to the serializer function.
-function serializeTo(doc, format, options) {
-  var converter = serializers[format];
-  if (!converter) throw new RangeError("Target format " + format + " not defined");
-  return converter(doc, options);
-}
-
-// :: (string) → bool
-// Query whether a given serialization format has been registered.
-function knownTarget(format) {
-  return !!serializers[format];
-}
-
-// :: (string, (Node, ?Object) → any)
-// Register a function as the serializer for `format`.
-function defineTarget(format, func) {
-  serializers[format] = func;
-}
-
-defineTarget("json", function (doc) {
-  return doc.toJSON();
-});
-
-var parsers = Object.create(null);
-
-// :: (Schema, any, string, ?Object) → Node
-// Parse document `value` from the format named by `format`. If
-// `options` is given, it is passed along to the parser function.
-function parseFrom(schema, value, format, options) {
-  var converter = parsers[format];
-  if (!converter) throw new RangeError("Source format " + format + " not defined");
-  return converter(schema, value, options);
-}
-
-// :: (string) → bool
-// Query whether a parser for the named format has been registered.
-function knownSource(format) {
-  return !!parsers[format];
-}
-
-// :: (string, (Schema, any, ?Object) → Node)
-// Register a parser function for `format`.
-function defineSource(format, func) {
-  parsers[format] = func;
-}
-
-defineSource("json", function (schema, json) {
-  return schema.nodeFromJSON(json);
-});
-},{}],23:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
@@ -6383,73 +6429,76 @@ exports.toHTML = toHTML;
 
 var _model = require("../model");
 
-var _register = require("./register");
-
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-// ;; Object used to to expose relevant values and methods
+// Object used to to expose relevant values and methods
 // to DOM serializer functions.
 
 var DOMSerializer = function () {
   function DOMSerializer(options) {
     _classCallCheck(this, DOMSerializer);
 
-    // :: Object The options passed to the serializer.
+    // : Object The options passed to the serializer.
     this.options = options || {};
-    // :: DOMDocument The DOM document in which we are working.
+    // : DOMDocument The DOM document in which we are working.
     this.doc = this.options.document || window.document;
   }
 
-  // :: (string, ?Object, ...[union<string, DOMNode>]) → DOMNode
-  // Create a DOM node of the given type, with (optionally) the given
-  // attributes and content. Content elements may be strings (for text
-  // nodes) or other DOM nodes.
-
-
   _createClass(DOMSerializer, [{
-    key: "elt",
-    value: function elt(type, attrs) {
-      var result = this.doc.createElement(type);
-      if (attrs) for (var name in attrs) {
-        if (name == "style") result.style.cssText = attrs[name];else if (attrs[name]) result.setAttribute(name, attrs[name]);
-      }
-
-      for (var _len = arguments.length, content = Array(_len > 2 ? _len - 2 : 0), _key = 2; _key < _len; _key++) {
-        content[_key - 2] = arguments[_key];
-      }
-
-      for (var i = 0; i < content.length; i++) {
-        result.appendChild(typeof content[i] == "string" ? this.doc.createTextNode(content[i]) : content[i]);
-      }return result;
+    key: "renderNode",
+    value: function renderNode(node, pos, offset) {
+      var dom = this.renderStructure(node.type.toDOM(node), node.content, pos + 1);
+      if (this.options.onRender) dom = this.options.onRender(node, dom, pos, offset) || dom;
+      return dom;
     }
   }, {
-    key: "renderNode",
-    value: function renderNode(node, offset) {
-      var dom = node.type.serializeDOM(node, this);
-      if (this.options.onRender) dom = this.options.onRender(node, dom, offset) || dom;
+    key: "renderStructure",
+    value: function renderStructure(structure, content, startPos) {
+      if (typeof structure == "string") return this.doc.createTextNode(structure);
+      if (structure.nodeType != null) return structure;
+      var dom = this.doc.createElement(structure[0]),
+          attrs = structure[1],
+          start = 1;
+      if (attrs && (typeof attrs === "undefined" ? "undefined" : _typeof(attrs)) == "object" && attrs.nodeType == null && !Array.isArray(attrs)) {
+        start = 2;
+        for (var name in attrs) {
+          if (name == "style") dom.style.cssText = attrs[name];else if (attrs[name]) dom.setAttribute(name, attrs[name]);
+        }
+      }
+      for (var i = start; i < structure.length; i++) {
+        var child = structure[i];
+        if (child === 0) {
+          if (!content) throw new RangeError("Content hole not allowed in a Mark spec (must produce a single node)");
+          if (i < structure.length - 1 || i > start) throw new RangeError("Content hole must be the only child of its parent node");
+          if (this.options.onContainer) this.options.onContainer(dom);
+          this.renderFragment(content, dom, startPos);
+        } else {
+          dom.appendChild(this.renderStructure(child, content, startPos));
+        }
+      }
       return dom;
     }
   }, {
     key: "renderFragment",
-    value: function renderFragment(fragment, where) {
+    value: function renderFragment(fragment, where, startPos) {
       if (!where) where = this.doc.createDocumentFragment();
       if (fragment.size == 0) return where;
 
-      if (!fragment.firstChild.isInline) this.renderBlocksInto(fragment, where);else if (this.options.renderInlineFlat) this.renderInlineFlatInto(fragment, where);else this.renderInlineInto(fragment, where);
+      if (!fragment.firstChild.isInline) this.renderBlocksInto(fragment, where, startPos);else if (this.options.renderInlineFlat) this.renderInlineFlatInto(fragment, where, startPos);else this.renderInlineInto(fragment, where, startPos);
       return where;
     }
   }, {
     key: "renderBlocksInto",
-    value: function renderBlocksInto(fragment, where) {
+    value: function renderBlocksInto(fragment, where, startPos) {
       var _this = this;
 
       fragment.forEach(function (node, offset) {
-        return where.appendChild(_this.renderNode(node, offset));
+        return where.appendChild(_this.renderNode(node, startPos + offset, offset));
       });
     }
   }, {
     key: "renderInlineInto",
-    value: function renderInlineInto(fragment, where) {
+    value: function renderInlineInto(fragment, where, startPos) {
       var _this2 = this;
 
       var top = where;
@@ -6467,25 +6516,26 @@ var DOMSerializer = function () {
           active.push(add);
           top = top.appendChild(_this2.renderMark(add));
         }
-        top.appendChild(_this2.renderNode(node, offset));
+        top.appendChild(_this2.renderNode(node, startPos + offset, offset));
       });
     }
   }, {
     key: "renderInlineFlatInto",
-    value: function renderInlineFlatInto(fragment, where) {
+    value: function renderInlineFlatInto(fragment, where, startPos) {
       var _this3 = this;
 
       fragment.forEach(function (node, offset) {
-        var dom = _this3.renderNode(node, offset);
+        var pos = startPos + offset,
+            dom = _this3.renderNode(node, pos, offset);
         dom = _this3.wrapInlineFlat(dom, node.marks);
-        dom = _this3.options.renderInlineFlat(node, dom, offset) || dom;
+        dom = _this3.options.renderInlineFlat(node, dom, pos, offset) || dom;
         where.appendChild(dom);
       });
     }
   }, {
     key: "renderMark",
     value: function renderMark(mark) {
-      return mark.type.serializeDOM(mark, this);
+      return this.renderStructure(mark.type.toDOM(mark));
     }
   }, {
     key: "wrapInlineFlat",
@@ -6495,22 +6545,6 @@ var DOMSerializer = function () {
         wrap.appendChild(dom);
         dom = wrap;
       }
-      return dom;
-    }
-
-    // :: (Node, string, ?Object) → DOMNode
-    // Render the content of ProseMirror node into a DOM node with the
-    // given tag name and attributes.
-
-  }, {
-    key: "renderAs",
-    value: function renderAs(node, tagName, tagAttrs) {
-      if (this.options.preRenderContent) this.options.preRenderContent(node);
-
-      var dom = this.renderFragment(node.content, this.elt(tagName, tagAttrs));
-      if (this.options.onContainer) this.options.onContainer(dom);
-
-      if (this.options.postRenderContent) this.options.postRenderContent(node);
       return dom;
     }
   }]);
@@ -6524,36 +6558,49 @@ var DOMSerializer = function () {
 // should be passed so that the serialize can create nodes.
 //
 // To define rendering behavior for your own [node](#NodeType) and
-// [mark](#MarkType) types, give them a `serializeDOM` method. This
-// method is passed a `Node` and a `DOMSerializer`, and should return
-// the [DOM
-// node](https://developer.mozilla.org/en-US/docs/Web/API/Node) that
-// represents this node and its content. For marks, that should be an
-// inline wrapping node like `<a>` or `<strong>`.
-//
-// Individual attributes can also define serialization behavior. If an
-// `Attribute` object has a `serializeDOM` method, that will be called
-// with the DOM node representing the node that the attribute applies
-// to and the atttribute's value, so that it can set additional DOM
-// attributes on the DOM node.
+// [mark](#MarkType) types, give them a [`toDOM`](#NodeType.toDOM)
+// method.
 
 
 function toDOM(content, options) {
-  return new DOMSerializer(options).renderFragment(content instanceof _model.Node ? content.content : content);
+  return new DOMSerializer(options).renderFragment(content instanceof _model.Node ? content.content : content, null, options.pos || 0);
 }
 
-(0, _register.defineTarget)("dom", toDOM);
+// :: (Node) → DOMOutputSpec #path=NodeType.prototype.toDOM
+// Defines the way the node should be serialized to DOM/HTML. Should
+// return an [array structure](#DOMOutputSpec) that describes the
+// resulting DOM structure, with an optional number zero (“hole”) in
+// it to indicate where the node's content should be inserted.
+
+// :: (Node) → DOMOutputSpec #path=MarkType.prototype.toDOM
+// Defines the way the mark should be serialized to DOM/HTML.
+
+// :: union<string, DOMNode, [any]> #path=DOMOutputSpec #kind=interface
+// A description of a DOM structure. Strings are interpreted as text
+// nodes. A DOM node simply means itself.
+//
+// An array describes a DOM element. The first element in the array
+// should be a string, and is the name of the DOM element. If the
+// second element is a non-Array, non-DOM node object, it is
+// interpreted as an object providing the DOM element's attributes.
+// Any elements after that (including the 2nd if it's not an attribute
+// object) are interpreted as children of the DOM elements, and must
+// either be valid `DOMOutputSpec` values, or the number zero.
+//
+// The number zero (pronounce “hole”) is used to indicate the place
+// where a ProseMirror node's content should be inserted.
 
 // :: (Node, ?Object) → DOMNode
 // Serialize a given node to a DOM node. This is useful when you need
 // to serialize a part of a document, as opposed to the whole
 // document.
 function nodeToDOM(node, options, offset) {
-  var serializer = new DOMSerializer(options);
-  var dom = serializer.renderNode(node, offset);
+  var serializer = new DOMSerializer(options),
+      pos = options.pos || 0;
+  var dom = serializer.renderNode(node, pos, offset);
   if (node.isInline) {
     dom = serializer.wrapInlineFlat(dom, node.marks);
-    if (serializer.options.renderInlineFlat) dom = options.renderInlineFlat(node, dom, offset) || dom;
+    if (serializer.options.renderInlineFlat) dom = options.renderInlineFlat(node, dom, pos, offset) || dom;
   }
   return dom;
 }
@@ -6564,153 +6611,11 @@ function nodeToDOM(node, options, offset) {
 // when not in the browser.
 function toHTML(content, options) {
   var serializer = new DOMSerializer(options);
-  var wrap = serializer.elt("div");
-  wrap.appendChild(serializer.renderFragment(content instanceof _model.Node ? content.content : content));
+  var wrap = serializer.doc.createElement("div");
+  wrap.appendChild(serializer.renderFragment(content instanceof _model.Node ? content.content : content, null, options.pos || 0));
   return wrap.innerHTML;
 }
-
-(0, _register.defineTarget)("html", toHTML);
-
-// Block nodes
-
-function def(cls, method) {
-  cls.prototype.serializeDOM = method;
-}
-
-def(_model.BlockQuote, function (node, s) {
-  return s.renderAs(node, "blockquote");
-});
-
-_model.BlockQuote.prototype.countCoordsAsChild = function (_, pos, dom, coords) {
-  var childBox = dom.firstChild.getBoundingClientRect();
-  if (coords.left < childBox.left - 2) return pos;
-};
-
-def(_model.BulletList, function (node, s) {
-  return s.renderAs(node, "ul");
-});
-
-def(_model.OrderedList, function (node, s) {
-  return s.renderAs(node, "ol", { start: node.attrs.order != 1 && node.attrs.order });
-});
-
-_model.OrderedList.prototype.countCoordsAsChild = _model.BulletList.prototype.countCoordsAsChild = function (_, pos, dom, coords) {
-  for (var child = dom.firstChild; child; child = child.nextSibling) {
-    var off = child.getAttribute("pm-offset");
-    if (!off) continue;
-    var childBox = child.getBoundingClientRect();
-    if (coords.left > childBox.left - 2) return null;
-    if (childBox.top <= coords.top && childBox.bottom >= coords.top) return pos + 1 + +off;
-  }
-};
-
-def(_model.ListItem, function (node, s) {
-  return s.renderAs(node, "li");
-});
-
-def(_model.HorizontalRule, function (_, s) {
-  return s.elt("div", null, s.elt("hr"));
-});
-
-def(_model.Paragraph, function (node, s) {
-  return s.renderAs(node, "p");
-});
-
-def(_model.Heading, function (node, s) {
-  return s.renderAs(node, "h" + node.attrs.level);
-});
-
-def(_model.CodeBlock, function (node, s) {
-  var code = s.renderAs(node, "code");
-  if (node.attrs.params != null) code.className = "fence " + node.attrs.params.replace(/(^|\s+)/g, "$&lang-");
-  return s.elt("pre", null, code);
-});
-
-// Inline content
-
-def(_model.Text, function (node, s) {
-  return s.doc.createTextNode(node.text);
-});
-
-def(_model.Image, function (node, s) {
-  return s.elt("img", {
-    src: node.attrs.src,
-    alt: node.attrs.alt,
-    title: node.attrs.title
-  });
-});
-
-def(_model.HardBreak, function (_, s) {
-  return s.elt("br");
-});
-
-// Inline styles
-
-def(_model.EmMark, function (_, s) {
-  return s.elt("em");
-});
-
-def(_model.StrongMark, function (_, s) {
-  return s.elt("strong");
-});
-
-def(_model.CodeMark, function (_, s) {
-  return s.elt("code");
-});
-
-def(_model.LinkMark, function (mark, s) {
-  return s.elt("a", { href: mark.attrs.href,
-    title: mark.attrs.title });
-});
-},{"../model":29,"./register":22}],24:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.toText = toText;
-
-var _model = require("../model");
-
-var _register = require("./register");
-
-function serializeFragment(fragment) {
-  var accum = "";
-  fragment.forEach(function (child) {
-    return accum += child.type.serializeText(child);
-  });
-  return accum;
-}
-
-_model.Block.prototype.serializeText = function (node) {
-  return serializeFragment(node.content);
-};
-
-_model.Textblock.prototype.serializeText = function (node) {
-  var text = _model.Block.prototype.serializeText(node);
-  return text && text + "\n\n";
-};
-
-_model.Inline.prototype.serializeText = function () {
-  return "";
-};
-
-_model.HardBreak.prototype.serializeText = function () {
-  return "\n";
-};
-
-_model.Text.prototype.serializeText = function (node) {
-  return node.text;
-};
-
-// :: (union<Node, Fragment>) → string
-// Serialize content as a plain text string.
-function toText(content) {
-  return serializeFragment(content).trim();
-}
-
-(0, _register.defineTarget)("text", toText);
-},{"../model":29,"./register":22}],25:[function(require,module,exports){
+},{"../model":26}],23:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -6724,25 +6629,19 @@ var _fragment = require("./fragment");
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var many = 2e9; // Big number representable as a 32-bit int
-
 var ContentExpr = exports.ContentExpr = function () {
-  function ContentExpr(nodeType, elements) {
+  function ContentExpr(nodeType, elements, inlineContent) {
     _classCallCheck(this, ContentExpr);
 
     this.nodeType = nodeType;
     this.elements = elements;
+    this.inlineContent = inlineContent;
   }
 
   _createClass(ContentExpr, [{
     key: "start",
     value: function start(attrs) {
       return new ContentMatch(this, attrs, 0, 0);
-    }
-  }, {
-    key: "end",
-    value: function end(attrs) {
-      return new ContentMatch(this, attrs, this.elements.length, 0);
     }
   }, {
     key: "matches",
@@ -6774,7 +6673,7 @@ var ContentExpr = exports.ContentExpr = function () {
         var elt = this.elements[0];
         if (!checkCount(elt, content.childCount - (to - from) + (end - start), attrs, this)) return false;
         for (var i = start; i < end; i++) {
-          if (!elt.matches(replacement.child(i))) return false;
+          if (!elt.matches(replacement.child(i), attrs, this)) return false;
         }return true;
       }
 
@@ -6783,14 +6682,14 @@ var ContentExpr = exports.ContentExpr = function () {
     }
   }, {
     key: "checkReplaceWith",
-    value: function checkReplaceWith(attrs, content, from, to, type, marks) {
+    value: function checkReplaceWith(attrs, content, from, to, type, typeAttrs, marks) {
       if (this.elements.length == 1) {
         var elt = this.elements[0];
         if (!checkCount(elt, content.childCount - (to - from) + 1, attrs, this)) return false;
-        return elt.matchesType(type, marks);
+        return elt.matchesType(type, typeAttrs, marks, attrs, this);
       }
 
-      var match = this.getMatchAt(attrs, content, from).matchType(type, marks);
+      var match = this.getMatchAt(attrs, content, from).matchType(type, typeAttrs, marks);
       return match ? match.matchToEnd(content, to) : false;
     }
   }, {
@@ -6805,11 +6704,6 @@ var ContentExpr = exports.ContentExpr = function () {
       return false;
     }
   }, {
-    key: "containsOnly",
-    value: function containsOnly(node) {
-      return this.elements.length == 1 && this.elements[0].matches(node);
-    }
-  }, {
     key: "generateContent",
     value: function generateContent(attrs) {
       return this.start(attrs).fillBefore(_fragment.Fragment.empty, true);
@@ -6821,9 +6715,10 @@ var ContentExpr = exports.ContentExpr = function () {
     }
   }], [{
     key: "parse",
-    value: function parse(nodeType, expr, groups) {
+    value: function parse(nodeType, expr, specs) {
       var elements = [],
-          pos = 0;
+          pos = 0,
+          inline = null;
       for (;;) {
         pos += /^\s*/.exec(expr.slice(pos))[0].length;
         if (pos == expr.length) break;
@@ -6831,42 +6726,35 @@ var ContentExpr = exports.ContentExpr = function () {
         var types = /^(?:(\w+)|\(\s*(\w+(?:\s*\|\s*\w+)*)\s*\))/.exec(expr.slice(pos));
         if (!types) throw new SyntaxError("Invalid content expression '" + expr + "' at " + pos);
         pos += types[0].length;
-        var marks = /^\[(?:(_)|\s*(\w+(?:\s+\w+)*)\s*)\]/.exec(expr.slice(pos));
+        var attrs = /^\[([^\]]+)\]/.exec(expr.slice(pos));
+        if (attrs) pos += attrs[0].length;
+        var marks = /^<(?:(_)|\s*(\w+(?:\s+\w+)*)\s*)>/.exec(expr.slice(pos));
         if (marks) pos += marks[0].length;
-        var count = /^(?:([+*?])|%(\d+|(?:\.\w+)+)|\{\s*(\d+|(?:\.\w+)+)\s*(,\s*(\d+|(?:\.\w+)+)?)?\s*\})/.exec(expr.slice(pos));
-        if (count) pos += count[0].length;
+        var repeat = /^(?:([+*?])|\{\s*(\d+|\.\w+)\s*(,\s*(\d+|\.\w+)?)?\s*\})/.exec(expr.slice(pos));
+        if (repeat) pos += repeat[0].length;
 
-        var nodeTypes = expandTypes(nodeType.schema, groups, types[1] ? [types[1]] : types[2].split(/\s*\|\s*/));
-        var markSet = !marks ? false : marks[1] ? true : checkMarks(nodeType.schema, marks[2].split(/\s+/));
-        var min = 1,
-            max = 1,
-            mod = -1;
-        if (count) {
-          if (count[1] == "+") {
-            max = many;
-          } else if (count[1] == "*") {
-            min = 0;
-            max = many;
-          } else if (count[1] == "?") {
-            min = 0;
-          } else if (count[2]) {
-            max = many;
-            min = mod = parseCount(nodeType, count[2]);
-          } else if (count[3]) {
-            min = parseCount(nodeType, count[3]);
-            if (count[4]) max = count[5] ? parseCount(nodeType, count[5]) : many;else max = min;
-          }
-          if (max == 0 || mod == 0 || min > max) throw new SyntaxError("Invalid repeat count in '" + expr + "'");
+        var nodeTypes = expandTypes(nodeType.schema, specs, types[1] ? [types[1]] : types[2].split(/\s*\|\s*/));
+        for (var i = 0; i < nodeTypes.length; i++) {
+          if (inline == null) inline = nodeTypes[i].isInline;else if (inline != nodeTypes[i].isInline) throw new SyntaxError("Mixing inline and block content in a single node");
         }
-        if (min != 0 && nodeTypes[0].hasRequiredAttrs) throw new SyntaxError("Node type " + types[0] + " in type " + nodeType.name + " is required, but has non-optional attributes");
-        var newElt = new ContentElement(nodeTypes, markSet, min, max, mod);
-        for (var i = elements.length - 1; i >= 0; i--) {
-          if (elements[i].overlaps(newElt)) throw new SyntaxError("Overlapping adjacent content expressions in '" + expr + "'");
-          if (elements[i].min != 0) break;
+        var attrSet = !attrs ? null : parseAttrs(nodeType, attrs[1]);
+        var markSet = !marks ? false : marks[1] ? true : checkMarks(nodeType.schema, marks[2].split(/\s+/));
+
+        var _parseRepeat = parseRepeat(nodeType, repeat);
+
+        var min = _parseRepeat.min;
+        var max = _parseRepeat.max;
+
+        if (min != 0 && nodeTypes[0].hasRequiredAttrs(attrSet)) throw new SyntaxError("Node type " + types[0] + " in type " + nodeType.name + " is required, but has non-optional attributes");
+        var newElt = new ContentElement(nodeTypes, attrSet, markSet, min, max);
+        for (var _i = elements.length - 1; _i >= 0; _i--) {
+          if (elements[_i].overlaps(newElt)) throw new SyntaxError("Overlapping adjacent content expressions in '" + expr + "'");
+          if (elements[_i].min != 0) break;
         }
         elements.push(newElt);
       }
-      return new ContentExpr(nodeType, elements);
+
+      return new ContentExpr(nodeType, elements, !!inline);
     }
   }]);
 
@@ -6874,20 +6762,26 @@ var ContentExpr = exports.ContentExpr = function () {
 }();
 
 var ContentElement = function () {
-  function ContentElement(nodeTypes, marks, min, max, mod) {
+  function ContentElement(nodeTypes, attrs, marks, min, max) {
     _classCallCheck(this, ContentElement);
 
     this.nodeTypes = nodeTypes;
+    this.attrs = attrs;
     this.marks = marks;
     this.min = min;
     this.max = max;
-    this.mod = mod;
   }
 
   _createClass(ContentElement, [{
     key: "matchesType",
-    value: function matchesType(type, marks) {
+    value: function matchesType(type, attrs, marks, parentAttrs, parentExpr) {
       if (this.nodeTypes.indexOf(type) == -1) return false;
+      if (this.attrs) {
+        if (!attrs) return false;
+        for (var prop in this.attrs) {
+          if (attrs[prop] != _resolveValue(this.attrs[prop], parentAttrs, parentExpr)) return false;
+        }
+      }
       if (this.marks === true) return true;
       if (this.marks === false) return marks.length == 0;
       for (var i = 0; i < marks.length; i++) {
@@ -6896,8 +6790,8 @@ var ContentElement = function () {
     }
   }, {
     key: "matches",
-    value: function matches(node) {
-      return this.matchesType(node.type, node.marks);
+    value: function matches(node, parentAttrs, parentExpr) {
+      return this.matchesType(node.type, node.attrs, node.marks, parentAttrs, parentExpr);
     }
   }, {
     key: "compatible",
@@ -6907,10 +6801,19 @@ var ContentElement = function () {
       }return false;
     }
   }, {
+    key: "constrainedAttrs",
+    value: function constrainedAttrs(parentAttrs, expr) {
+      if (!this.attrs) return null;
+      var attrs = Object.create(null);
+      for (var prop in this.attrs) {
+        attrs[prop] = _resolveValue(this.attrs[prop], parentAttrs, expr);
+      }return attrs;
+    }
+  }, {
     key: "createFiller",
-    value: function createFiller() {
+    value: function createFiller(parentAttrs, expr) {
       var type = this.nodeTypes[0],
-          attrs = type.computeAttrs(null);
+          attrs = type.computeAttrs(this.constrainedAttrs(parentAttrs, expr));
       return type.create(attrs, type.contentExpr.generateContent(attrs));
     }
   }, {
@@ -6955,23 +6858,9 @@ var ContentMatch = exports.ContentMatch = function () {
       return new ContentMatch(this.expr, this.attrs, index, count);
     }
   }, {
-    key: "resolveCount",
-    value: function resolveCount(count) {
-      return typeof count == "number" ? count : _resolveCount(count, this.attrs, this.expr);
-    }
-  }, {
-    key: "validCount",
-    value: function validCount(elt, count) {
-      var min = this.resolveCount(elt.min),
-          mod = this.resolveCount(elt.mod);
-      return count >= min && (mod == -1 || count % mod == 0);
-    }
-  }, {
-    key: "nextValidCount",
-    value: function nextValidCount(elt, count) {
-      var mod = this.resolveCount(elt.mod);
-      var valid = mod == -1 ? Math.max(this.resolveCount(elt.min), count) : count < mod ? mod : count + mod - count % mod;
-      return valid > this.resolveCount(elt.max) ? -1 : valid;
+    key: "resolveValue",
+    value: function resolveValue(value) {
+      return value instanceof AttrValue ? _resolveValue(value, this.attrs, this.expr) : value;
     }
 
     // :: (Node) → ?ContentMatch
@@ -6980,27 +6869,27 @@ var ContentMatch = exports.ContentMatch = function () {
   }, {
     key: "matchNode",
     value: function matchNode(node) {
-      return this.matchType(node.type, node.marks);
+      return this.matchType(node.type, node.attrs, node.marks);
     }
 
-    // :: (NodeType, [Mark]) → ?ContentMatch
+    // :: (NodeType, ?Object, [Mark]) → ?ContentMatch
     // Match a node type and marks, returning an updated match if
     // successful.
 
   }, {
     key: "matchType",
-    value: function matchType(type, marks) {
+    value: function matchType(type, attrs, marks) {
       // FIXME `var` to work around Babel bug T7293
       for (index = this.index, count = this.count, void 0; index < this.expr.elements.length; index++, count = 0) {
         var index, count;
 
         var elt = this.expr.elements[index],
-            max = this.resolveCount(elt.max);
-        if (count < max && elt.matchesType(type, marks)) {
+            max = this.resolveValue(elt.max);
+        if (count < max && elt.matchesType(type, attrs, marks, this.attrs, this.expr)) {
           count++;
           return this.move(index, count);
         }
-        if (!this.validCount(elt, count)) return null;
+        if (count < this.resolveValue(elt.min)) return null;
       }
     }
 
@@ -7023,17 +6912,17 @@ var ContentMatch = exports.ContentMatch = function () {
         var index, count;
 
         var elt = this.expr.elements[index],
-            max = this.resolveCount(elt.max);
+            max = this.resolveValue(elt.max);
 
         while (count < max) {
-          if (elt.matches(fragment.child(fragPos))) {
+          if (elt.matches(fragment.child(fragPos), this.attrs, this.expr)) {
             count++;
             if (++fragPos == to) return this.move(index, count);
           } else {
             break;
           }
         }
-        if (!this.validCount(elt, count)) return null;
+        if (count < this.resolveValue(elt.min)) return null;
       }
       return false;
     }
@@ -7056,8 +6945,8 @@ var ContentMatch = exports.ContentMatch = function () {
   }, {
     key: "validEnd",
     value: function validEnd() {
-      for (var i = this.index; i < this.expr.elements.length; i++) {
-        if (!this.validCount(this.expr.elements[i], i == this.index ? this.count : 0)) return false;
+      for (var i = this.index, count = this.count; i < this.expr.elements.length; i++, count = 0) {
+        if (count < this.resolveValue(this.expr.elements[i].min)) return false;
       }return true;
     }
 
@@ -7077,41 +6966,34 @@ var ContentMatch = exports.ContentMatch = function () {
           end = this.expr.elements.length;
       for (;;) {
         var fits = match.matchFragment(after, index);
-        if (fits && (!toEnd || fits.validEnd())) break;
+        if (fits && (!toEnd || fits.validEnd())) return _fragment.Fragment.from(added);
         if (fits === false) return null; // Matched to end with content remaining
 
-        // If that fails, move to the next content element, adding
-        // filler elements if necessary.
-        var elt = match.element,
-            ahead = 0,
-            fill = void 0;
-        while (index + ahead < after.childCount && elt.matches(after.child(index + ahead))) {
-          ++ahead;
-        }if (ahead) {
-          var nextValid = this.nextValidCount(elt, match.count + ahead);
-          if (nextValid > -1) fill = nextValid - match.count - ahead;
-        }
-        if (fill == null) fill = this.nextValidCount(elt, match.count) - match.count;
-        if (fill > 0) {
-          for (var i = 0; i < fill; i++) {
-            added.push(elt.createFiller());
-          }match = match.move(match.index, match.count + fill);
-        } else if (match.index == end) {
-          if (after.size) return null;else break;
-        } else {
+        var elt = match.element;
+        if (match.count < this.resolveValue(elt.min)) {
+          added.push(elt.createFiller(this.attrs, this.expr));
+          match = match.move(match.index, match.count + 1);
+        } else if (match.index < end) {
           match = match.move(match.index + 1, 0);
+        } else if (after.childCount > index) {
+          return null;
+        } else {
+          return _fragment.Fragment.from(added);
         }
       }
-      return _fragment.Fragment.from(added);
     }
   }, {
-    key: "possibleTypes",
-    value: function possibleTypes() {
+    key: "possibleContent",
+    value: function possibleContent() {
       var found = [];
       for (var i = this.index, count = this.count; i < this.expr.elements.length; i++, count = 0) {
-        var elt = this.expr.elements[i];
-        if (count < this.resolveCount(elt.max)) found = found.concat(elt.nodeTypes);
-        if (this.resolveCount(elt.min) > count) break;
+        var elt = this.expr.elements[i],
+            attrs = elt.constrainedAttrs(this.attrs, this.expr);
+        if (count < this.resolveValue(elt.max)) for (var j = 0; j < elt.nodeTypes.length; j++) {
+          var type = elt.nodeTypes[j];
+          if (!type.hasRequiredAttrs(attrs)) found.push({ type: type, attrs: attrs });
+        }
+        if (this.resolveValue(elt.min) > count) break;
       }
       return found;
     }
@@ -7125,6 +7007,43 @@ var ContentMatch = exports.ContentMatch = function () {
     value: function allowsMark(markType) {
       return this.element.allowsMark(markType);
     }
+
+    // :: (NodeType, ?Object) → ?[{type: NodeType, attrs: Object}]
+    // Find a set of wrapping node types that would allow a node of type
+    // `type` to appear at this position. The result may be empty (when
+    // it fits directly) and will be null when no such wrapping exists.
+
+  }, {
+    key: "findWrapping",
+    value: function findWrapping(target, targetAttrs) {
+      // FIXME find out how expensive this is. Try to reintroduce caching?
+      var seen = Object.create(null),
+          first = { match: this, via: null },
+          active = [first];
+      while (active.length) {
+        var current = active.shift(),
+            match = current.match;
+        var possible = match.possibleContent();
+        for (var i = 0; i < possible.length; i++) {
+          var _possible$i = possible[i];
+          var type = _possible$i.type;
+          var attrs = _possible$i.attrs;var fullAttrs = type.computeAttrs(attrs);
+          if (type == target) {
+            var fits = match.matchType(type, targetAttrs, []);
+            if (fits && fits.validEnd()) {
+              var result = [];
+              for (var obj = current; obj.via; obj = obj.via) {
+                result.push({ type: obj.match.expr.nodeType, attrs: obj.match.attrs });
+              }return result.reverse();
+            }
+          }
+          if (!type.isLeaf && !(type.name in seen) && (current == first || match.matchType(type, fullAttrs, []).validEnd())) {
+            active.push({ match: type.contentExpr.start(fullAttrs), via: current });
+            seen[type.name] = true;
+          }
+        }
+      }
+    }
   }, {
     key: "element",
     get: function get() {
@@ -7135,23 +7054,20 @@ var ContentMatch = exports.ContentMatch = function () {
   return ContentMatch;
 }();
 
-function parseCount(nodeType, count) {
-  if (count.charAt(0) == ".") {
-    var props = count.slice(1).split(".");
-    if (!nodeType.attrs[props[0]]) throw new SyntaxError("Node type " + nodeType.name + " has no attribute " + props[0]);
-    return props;
-  } else {
-    return Number(count);
-  }
-}
+var AttrValue = function AttrValue(attr) {
+  _classCallCheck(this, AttrValue);
 
-function _resolveCount(count, attrs, expr) {
-  if (typeof count == "number") return count;
-  var value = attrs && attrs[count[0]];
-  if (value === undefined) value = expr.nodeType.defaultAttrs[count[0]];
-  for (var i = 1; i < count.length; i++) {
-    value = value[count[i]];
-  }return +value;
+  this.attr = attr;
+};
+
+function parseValue(nodeType, value) {
+  if (value.charAt(0) == ".") {
+    var attr = value.slice(1);
+    if (!nodeType.attrs[attr]) throw new SyntaxError("Node type " + nodeType.name + " has no attribute " + attr);
+    return new AttrValue(attr);
+  } else {
+    return JSON.parse(value);
+  }
 }
 
 function checkMarks(schema, marks) {
@@ -7163,409 +7079,68 @@ function checkMarks(schema, marks) {
   return found;
 }
 
-function checkCount(elt, count, attrs, expr) {
-  if (count < _resolveCount(elt.min, attrs, expr) || count > _resolveCount(elt.max, attrs, expr)) return false;
-  var mod = _resolveCount(elt.mod, attrs, expr);
-  return mod == -1 || count % mod == 0;
+function _resolveValue(value, attrs, expr) {
+  if (!(value instanceof AttrValue)) return value;
+  var attrVal = attrs && attrs[value.attr];
+  return attrVal !== undefined ? attrVal : expr.nodeType.defaultAttrs[value.attr];
 }
 
-function expandTypes(schema, groups, types) {
+function checkCount(elt, count, attrs, expr) {
+  return count >= _resolveValue(elt.min, attrs, expr) && count <= _resolveValue(elt.max, attrs, expr);
+}
+
+function expandTypes(schema, specs, types) {
   var result = [];
-  function expand(type) {
-    var found = void 0;
-    if (found = schema.nodes[type]) result.indexOf(found) == -1 && result.push(found);else if ((found = groups[type]) && found.length) found.forEach(expand);else throw new SyntaxError("Node type or group '" + type + "' does not exist");
-  }
-  types.forEach(expand);
+  types.forEach(function (type) {
+    var found = schema.nodes[type];
+    if (found) {
+      if (result.indexOf(found) == -1) result.push(found);
+    } else {
+      specs.forEach(function (name, spec) {
+        if (spec.group && spec.group.split(" ").indexOf(type) > -1) {
+          found = schema.nodes[name];
+          if (result.indexOf(found) == -1) result.push(found);
+        }
+      });
+    }
+    if (!found) throw new SyntaxError("Node type or group '" + type + "' does not exist");
+  });
   return result;
 }
-},{"./fragment":28}],26:[function(require,module,exports){
-"use strict";
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.defaultSchema = exports.CodeMark = exports.LinkMark = exports.StrongMark = exports.EmMark = exports.HardBreak = exports.Image = exports.Paragraph = exports.CodeBlock = exports.Heading = exports.HorizontalRule = exports.ListItem = exports.BulletList = exports.OrderedList = exports.BlockQuote = exports.Doc = undefined;
+var many = 2e9; // Big number representable as a 32-bit int
 
-var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
-
-var _schema = require("./schema");
-
-function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
-
-function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
-
-function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
-// ;; The default top-level document node type.
-
-var Doc = exports.Doc = function (_Block) {
-  _inherits(Doc, _Block);
-
-  function Doc() {
-    _classCallCheck(this, Doc);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(Doc).apply(this, arguments));
-  }
-
-  return Doc;
-}(_schema.Block);
-
-// ;; The default blockquote node type.
-
-
-var BlockQuote = exports.BlockQuote = function (_Block2) {
-  _inherits(BlockQuote, _Block2);
-
-  function BlockQuote() {
-    _classCallCheck(this, BlockQuote);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(BlockQuote).apply(this, arguments));
-  }
-
-  return BlockQuote;
-}(_schema.Block);
-
-// ;; The default ordered list node type. Has a single attribute,
-// `order`, which determines the number at which the list starts
-// counting, and defaults to 1.
-
-
-var OrderedList = exports.OrderedList = function (_Block3) {
-  _inherits(OrderedList, _Block3);
-
-  function OrderedList() {
-    _classCallCheck(this, OrderedList);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(OrderedList).apply(this, arguments));
-  }
-
-  _createClass(OrderedList, [{
-    key: "attrs",
-    get: function get() {
-      return { order: new _schema.Attribute({ default: 1 }) };
+function parseRepeat(nodeType, match) {
+  var min = 1,
+      max = 1;
+  if (match) {
+    if (match[1] == "+") {
+      max = many;
+    } else if (match[1] == "*") {
+      min = 0;
+      max = many;
+    } else if (match[1] == "?") {
+      min = 0;
+    } else if (match[2]) {
+      min = parseValue(nodeType, match[2]);
+      if (match[3]) max = match[4] ? parseValue(nodeType, match[4]) : many;else max = min;
     }
-  }]);
-
-  return OrderedList;
-}(_schema.Block);
-
-// ;; The default bullet list node type.
-
-
-var BulletList = exports.BulletList = function (_Block4) {
-  _inherits(BulletList, _Block4);
-
-  function BulletList() {
-    _classCallCheck(this, BulletList);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(BulletList).apply(this, arguments));
+    if (max == 0 || min > max) throw new SyntaxError("Invalid repeat count in '" + match[0] + "'");
   }
+  return { min: min, max: max };
+}
 
-  return BulletList;
-}(_schema.Block);
-
-// ;; The default list item node type.
-
-
-var ListItem = exports.ListItem = function (_Block5) {
-  _inherits(ListItem, _Block5);
-
-  function ListItem() {
-    _classCallCheck(this, ListItem);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(ListItem).apply(this, arguments));
+function parseAttrs(nodeType, expr) {
+  var parts = expr.split(/\s*,\s*/);
+  var attrs = Object.create(null);
+  for (var i = 0; i < parts.length; i++) {
+    var match = /^(\w+)=(\w+|\"(?:\\.|[^\\])*\"|\.\w+)$/.exec(parts[i]);
+    if (!match) throw new SyntaxError("Invalid attribute syntax: " + parts[i]);
+    attrs[match[1]] = parseValue(nodeType, match[2]);
   }
-
-  return ListItem;
-}(_schema.Block);
-
-// ;; The default horizontal rule node type.
-
-
-var HorizontalRule = exports.HorizontalRule = function (_Block6) {
-  _inherits(HorizontalRule, _Block6);
-
-  function HorizontalRule() {
-    _classCallCheck(this, HorizontalRule);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(HorizontalRule).apply(this, arguments));
-  }
-
-  return HorizontalRule;
-}(_schema.Block);
-
-// ;; The default heading node type. Has a single attribute
-// `level`, which indicates the heading level, and defaults to 1.
-
-
-var Heading = exports.Heading = function (_Textblock) {
-  _inherits(Heading, _Textblock);
-
-  function Heading() {
-    _classCallCheck(this, Heading);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(Heading).apply(this, arguments));
-  }
-
-  _createClass(Heading, [{
-    key: "attrs",
-    get: function get() {
-      return { level: new _schema.Attribute({ default: 1 }) };
-    }
-    // :: number
-    // Controls the maximum heading level. Has the value 6 in the
-    // `Heading` class, but you can override it in a subclass.
-
-  }, {
-    key: "maxLevel",
-    get: function get() {
-      return 6;
-    }
-  }]);
-
-  return Heading;
-}(_schema.Textblock);
-
-// ;; The default code block / listing node type. Only
-// allows unmarked text nodes inside of it.
-
-
-var CodeBlock = exports.CodeBlock = function (_Textblock2) {
-  _inherits(CodeBlock, _Textblock2);
-
-  function CodeBlock() {
-    _classCallCheck(this, CodeBlock);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(CodeBlock).apply(this, arguments));
-  }
-
-  _createClass(CodeBlock, [{
-    key: "isCode",
-    get: function get() {
-      return true;
-    }
-  }]);
-
-  return CodeBlock;
-}(_schema.Textblock);
-
-// ;; The default paragraph node type.
-
-
-var Paragraph = exports.Paragraph = function (_Textblock3) {
-  _inherits(Paragraph, _Textblock3);
-
-  function Paragraph() {
-    _classCallCheck(this, Paragraph);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(Paragraph).apply(this, arguments));
-  }
-
-  return Paragraph;
-}(_schema.Textblock);
-
-// ;; The default inline image node type. Has these
-// attributes:
-//
-// - **`src`** (required): The URL of the image.
-// - **`alt`**: The alt text.
-// - **`title`**: The title of the image.
-
-
-var Image = exports.Image = function (_Inline) {
-  _inherits(Image, _Inline);
-
-  function Image() {
-    _classCallCheck(this, Image);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(Image).apply(this, arguments));
-  }
-
-  _createClass(Image, [{
-    key: "attrs",
-    get: function get() {
-      return {
-        src: new _schema.Attribute(),
-        alt: new _schema.Attribute({ default: "" }),
-        title: new _schema.Attribute({ default: "" })
-      };
-    }
-  }, {
-    key: "draggable",
-    get: function get() {
-      return true;
-    }
-  }]);
-
-  return Image;
-}(_schema.Inline);
-
-// ;; The default hard break node type.
-
-
-var HardBreak = exports.HardBreak = function (_Inline2) {
-  _inherits(HardBreak, _Inline2);
-
-  function HardBreak() {
-    _classCallCheck(this, HardBreak);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(HardBreak).apply(this, arguments));
-  }
-
-  _createClass(HardBreak, [{
-    key: "selectable",
-    get: function get() {
-      return false;
-    }
-  }, {
-    key: "isBR",
-    get: function get() {
-      return true;
-    }
-  }]);
-
-  return HardBreak;
-}(_schema.Inline);
-
-// ;; The default emphasis mark type.
-
-
-var EmMark = exports.EmMark = function (_MarkType) {
-  _inherits(EmMark, _MarkType);
-
-  function EmMark() {
-    _classCallCheck(this, EmMark);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(EmMark).apply(this, arguments));
-  }
-
-  _createClass(EmMark, null, [{
-    key: "rank",
-    get: function get() {
-      return 31;
-    }
-  }]);
-
-  return EmMark;
-}(_schema.MarkType);
-
-// ;; The default strong mark type.
-
-
-var StrongMark = exports.StrongMark = function (_MarkType2) {
-  _inherits(StrongMark, _MarkType2);
-
-  function StrongMark() {
-    _classCallCheck(this, StrongMark);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(StrongMark).apply(this, arguments));
-  }
-
-  _createClass(StrongMark, null, [{
-    key: "rank",
-    get: function get() {
-      return 32;
-    }
-  }]);
-
-  return StrongMark;
-}(_schema.MarkType);
-
-// ;; The default link mark type. Has these attributes:
-//
-// - **`href`** (required): The link target.
-// - **`title`**: The link's title.
-
-
-var LinkMark = exports.LinkMark = function (_MarkType3) {
-  _inherits(LinkMark, _MarkType3);
-
-  function LinkMark() {
-    _classCallCheck(this, LinkMark);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(LinkMark).apply(this, arguments));
-  }
-
-  _createClass(LinkMark, [{
-    key: "attrs",
-    get: function get() {
-      return {
-        href: new _schema.Attribute(),
-        title: new _schema.Attribute({ default: "" })
-      };
-    }
-  }], [{
-    key: "rank",
-    get: function get() {
-      return 60;
-    }
-  }]);
-
-  return LinkMark;
-}(_schema.MarkType);
-
-// ;; The default code font mark type.
-
-
-var CodeMark = exports.CodeMark = function (_MarkType4) {
-  _inherits(CodeMark, _MarkType4);
-
-  function CodeMark() {
-    _classCallCheck(this, CodeMark);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(CodeMark).apply(this, arguments));
-  }
-
-  _createClass(CodeMark, [{
-    key: "isCode",
-    get: function get() {
-      return true;
-    }
-  }], [{
-    key: "rank",
-    get: function get() {
-      return 101;
-    }
-  }]);
-
-  return CodeMark;
-}(_schema.MarkType);
-
-// :: Schema
-// ProseMirror's default document schema.
-
-
-var defaultSchema = exports.defaultSchema = new _schema.Schema({
-  nodes: {
-    doc: { type: Doc, content: "block+" },
-    blockquote: { type: BlockQuote, content: "block+" },
-    ordered_list: { type: OrderedList, content: "list_item+" },
-    bullet_list: { type: BulletList, content: "list_item+" },
-    list_item: { type: ListItem, content: "block+" },
-    horizontal_rule: { type: HorizontalRule },
-
-    paragraph: { type: Paragraph, content: "inline[_]*" },
-    heading: { type: Heading, content: "inline[_]*" },
-    code_block: { type: CodeBlock, content: "text*" },
-
-    text: { type: _schema.Text },
-    image: { type: Image },
-    hard_break: { type: HardBreak }
-  },
-
-  groups: {
-    block: ["paragraph", "blockquote", "ordered_list", "bullet_list", "heading", "code_block", "horizontal_rule"],
-    inline: ["text", "image", "hard_break"]
-  },
-
-  marks: {
-    em: EmMark,
-    strong: StrongMark,
-    link: LinkMark,
-    code: CodeMark
-  }
-});
-},{"./schema":34}],27:[function(require,module,exports){
+  return attrs;
+}
+},{"./fragment":25}],24:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -7640,7 +7215,7 @@ function findDiffEnd(a, b) {
     posA -= size;posB -= size;
   }
 }
-},{}],28:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -7669,17 +7244,12 @@ var Fragment = exports.Fragment = function () {
     }
   }
 
-  // :: string
-  // Concatenate all the text nodes found in this fragment and its
-  // children.
+  // :: () → string
+  // Return a debugging string that describes this fragment.
 
 
   _createClass(Fragment, [{
     key: "toString",
-
-
-    // :: () → string
-    // Return a debugging string that describes this fragment.
     value: function toString() {
       return "<" + this.toStringInner() + ">";
     }
@@ -7700,6 +7270,25 @@ var Fragment = exports.Fragment = function () {
         }
         pos = end;
       }
+    }
+
+    // :: (number, number, string) → string
+
+  }, {
+    key: "textBetween",
+    value: function textBetween(from, to, separator) {
+      var text = "",
+          separated = true;
+      this.nodesBetween(from, to, function (node, pos) {
+        if (node.isText) {
+          text += node.text.slice(Math.max(from, pos) - pos, to - pos);
+          separated = !separator;
+        } else if (!separated && node.isBlock) {
+          text += separator;
+          separated = true;
+        }
+      }, 0);
+      return text;
     }
 
     // :: (number, ?number) → Fragment
@@ -7884,15 +7473,6 @@ var Fragment = exports.Fragment = function () {
       }
     }
   }, {
-    key: "textContent",
-    get: function get() {
-      var text = "";
-      this.content.forEach(function (n) {
-        return text += n.textContent;
-      });
-      return text;
-    }
-  }, {
     key: "firstChild",
 
 
@@ -7972,7 +7552,7 @@ function retIndex(index, offset) {
 // contain anything (rather than allocating a new empty fragment for
 // each leaf node).
 Fragment.empty = new Fragment([], 0);
-},{}],29:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -8056,12 +7636,6 @@ Object.defineProperty(exports, "Block", {
                 return _schema.Block;
         }
 });
-Object.defineProperty(exports, "Textblock", {
-        enumerable: true,
-        get: function get() {
-                return _schema.Textblock;
-        }
-});
 Object.defineProperty(exports, "Inline", {
         enumerable: true,
         get: function get() {
@@ -8093,105 +7667,6 @@ Object.defineProperty(exports, "NodeKind", {
         }
 });
 
-var _defaultschema = require("./defaultschema");
-
-Object.defineProperty(exports, "defaultSchema", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.defaultSchema;
-        }
-});
-Object.defineProperty(exports, "Doc", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.Doc;
-        }
-});
-Object.defineProperty(exports, "BlockQuote", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.BlockQuote;
-        }
-});
-Object.defineProperty(exports, "OrderedList", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.OrderedList;
-        }
-});
-Object.defineProperty(exports, "BulletList", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.BulletList;
-        }
-});
-Object.defineProperty(exports, "ListItem", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.ListItem;
-        }
-});
-Object.defineProperty(exports, "HorizontalRule", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.HorizontalRule;
-        }
-});
-Object.defineProperty(exports, "Paragraph", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.Paragraph;
-        }
-});
-Object.defineProperty(exports, "Heading", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.Heading;
-        }
-});
-Object.defineProperty(exports, "CodeBlock", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.CodeBlock;
-        }
-});
-Object.defineProperty(exports, "Image", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.Image;
-        }
-});
-Object.defineProperty(exports, "HardBreak", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.HardBreak;
-        }
-});
-Object.defineProperty(exports, "CodeMark", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.CodeMark;
-        }
-});
-Object.defineProperty(exports, "EmMark", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.EmMark;
-        }
-});
-Object.defineProperty(exports, "StrongMark", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.StrongMark;
-        }
-});
-Object.defineProperty(exports, "LinkMark", {
-        enumerable: true,
-        get: function get() {
-                return _defaultschema.LinkMark;
-        }
-});
-
 var _content = require("./content");
 
 Object.defineProperty(exports, "ContentMatch", {
@@ -8215,7 +7690,7 @@ Object.defineProperty(exports, "findDiffEnd", {
                 return _diff.findDiffEnd;
         }
 });
-},{"./content":25,"./defaultschema":26,"./diff":27,"./fragment":28,"./mark":30,"./node":31,"./replace":32,"./resolvedpos":33,"./schema":34}],30:[function(require,module,exports){
+},{"./content":23,"./diff":24,"./fragment":25,"./mark":27,"./node":28,"./replace":29,"./resolvedpos":30,"./schema":31}],27:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -8352,7 +7827,7 @@ var Mark = exports.Mark = function () {
 }();
 
 var empty = [];
-},{"../util/comparedeep":45}],31:[function(require,module,exports){
+},{"../util/comparedeep":43}],28:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -8458,6 +7933,22 @@ var Node = exports.Node = function () {
 
     // :: string
     // Concatenate all the text nodes found in this fragment and its
+    // children.
+
+  }, {
+    key: "textBetween",
+
+
+    // :: (number, number, ?string) → string
+    // Get all text between positions `from` and `to`. When `separator`
+    // is given, it will be inserted whenever a new block node is
+    // started.
+    value: function textBetween(from, to, separator) {
+      return this.content.textBetween(from, to, separator);
+    }
+
+    // :: ?Node
+    // Returns this node's first child, or `null` if there are no
     // children.
 
   }, {
@@ -8714,18 +8205,6 @@ var Node = exports.Node = function () {
       return this.type.contentExpr.getMatchAt(this.attrs, this.content, index);
     }
 
-    // :: (number, NodeType) → ?[NodeType]
-    // Find a set of wrapping node types that would allow a node of type
-    // `type` to appear at position `index` in this node. The result may
-    // be empty (when it fits directly) and will be null when no such
-    // wrapping exists.
-
-  }, {
-    key: "findWrappingAt",
-    value: function findWrappingAt(index, type) {
-      return this.type.findWrapping(type, this.contentMatchAt(index));
-    }
-
     // :: (number, number, ?Fragment, ?number, ?number) → bool
     // Test whether replacing the range `from` to `to` (by index) with
     // the given replacement fragment (which defaults to the empty
@@ -8745,8 +8224,8 @@ var Node = exports.Node = function () {
 
   }, {
     key: "canReplaceWith",
-    value: function canReplaceWith(from, to, type, marks) {
-      return this.type.contentExpr.checkReplaceWith(this.attrs, this.content, from, to, type, marks || emptyArray);
+    value: function canReplaceWith(from, to, type, attrs, marks) {
+      return this.type.contentExpr.checkReplaceWith(this.attrs, this.content, from, to, type, attrs, marks || emptyArray);
     }
 
     // :: (Node) → bool
@@ -8804,13 +8283,8 @@ var Node = exports.Node = function () {
   }, {
     key: "textContent",
     get: function get() {
-      return this.content.textContent;
+      this.textBetween(0, this.content.size, "");
     }
-
-    // :: ?Node
-    // Returns this node's first child, or `null` if there are no
-    // children.
-
   }, {
     key: "firstChild",
     get: function get() {
@@ -8897,6 +8371,11 @@ var TextNode = exports.TextNode = function (_Node) {
       return wrapMarks(this.marks, JSON.stringify(this.text));
     }
   }, {
+    key: "textBetween",
+    value: function textBetween(from, to) {
+      return this.text.slice(from, to);
+    }
+  }, {
     key: "mark",
     value: function mark(marks) {
       return new TextNode(this.type, this.attrs, this.text, marks);
@@ -8942,7 +8421,7 @@ function wrapMarks(marks, str) {
     str = marks[i].type.name + "(" + str + ")";
   }return str;
 }
-},{"../util/comparedeep":45,"./fragment":28,"./mark":30,"./replace":32,"./resolvedpos":33}],32:[function(require,module,exports){
+},{"../util/comparedeep":43,"./fragment":25,"./mark":27,"./replace":29,"./resolvedpos":30}],29:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -9006,17 +8485,19 @@ var Slice = exports.Slice = function () {
   _createClass(Slice, [{
     key: "insertAt",
     value: function insertAt(pos, fragment) {
-      function insertInto(content, dist, insert) {
+      function insertInto(content, dist, insert, parent) {
         var _content$findIndex = content.findIndex(dist);
 
         var index = _content$findIndex.index;
         var offset = _content$findIndex.offset;var child = content.maybeChild(index);
-        if (offset == dist || child.isText) return content.cut(0, dist).append(insert).append(content.cut(dist));
+        if (offset == dist || child.isText) {
+          if (parent && !parent.canReplace(index, index, insert)) return null;
+          return content.cut(0, dist).append(insert).append(content.cut(dist));
+        }
         var inner = insertInto(child.content, dist - offset - 1, insert);
-        if (!inner || offset + child.nodeSize > dist && !child.type.contentExpr.matches(child.attrs, inner)) return null;
-        return content.replaceChild(index, child.copy(inner));
+        return inner && content.replaceChild(index, child.copy(inner));
       }
-      var content = insertInto(this.content, pos + this.openLeft, fragment);
+      var content = insertInto(this.content, pos + this.openLeft, fragment, null);
       return content && new Slice(content, this.openLeft, this.openRight);
     }
   }, {
@@ -9185,7 +8666,7 @@ function prepareSliceForReplace(slice, $along) {
   }return { start: node.resolveNoCache(slice.openLeft + extra),
     end: node.resolveNoCache(node.content.size - slice.openRight - extra) };
 }
-},{"../util/error":46,"./fragment":28}],33:[function(require,module,exports){
+},{"../util/error":44,"./fragment":25}],30:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -9434,13 +8915,13 @@ var ResolvedPos = exports.ResolvedPos = function () {
 var resolveCache = [],
     resolveCachePos = 0,
     resolveCacheSize = 6;
-},{}],34:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.Schema = exports.MarkType = exports.Attribute = exports.Text = exports.Inline = exports.Textblock = exports.Block = exports.NodeType = undefined;
+exports.Schema = exports.MarkType = exports.Attribute = exports.Text = exports.Inline = exports.Block = exports.NodeType = undefined;
 
 var _get = function get(object, property, receiver) { if (object === null) object = Function.prototype; var desc = Object.getOwnPropertyDescriptor(object, property); if (desc === undefined) { var parent = Object.getPrototypeOf(object); if (parent === null) { return undefined; } else { return get(parent, property, receiver); } } else if ("value" in desc) { return desc.value; } else { var getter = desc.get; if (getter === undefined) { return undefined; } return getter.call(receiver); } };
 
@@ -9455,6 +8936,8 @@ var _mark = require("./mark");
 var _content = require("./content");
 
 var _obj = require("../util/obj");
+
+var _orderedmap = require("../util/orderedmap");
 
 function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 
@@ -9640,52 +9123,16 @@ var NodeType = exports.NodeType = function (_SchemaItem) {
 
 
   _createClass(NodeType, [{
+    key: "hasRequiredAttrs",
+    value: function hasRequiredAttrs(ignore) {
+      for (var n in this.attrs) {
+        if (this.attrs[n].isRequired && (!ignore || !(n in ignore))) return true;
+      }return false;
+    }
+  }, {
     key: "compatibleContent",
     value: function compatibleContent(other) {
       return this == other || this.contentExpr.compatible(other.contentExpr);
-    }
-  }, {
-    key: "containsOnly",
-    value: function containsOnly(node) {
-      return this.contentExpr.containsOnly(node);
-    }
-  }, {
-    key: "findWrappingInner",
-    value: function findWrappingInner(target) {
-      var seen = Object.create(null),
-          active = [{ type: this, via: [] }];
-      while (active.length) {
-        var current = active.shift(),
-            match = current.type.contentExpr.start(current.type.defaultAttrs);
-        var possible = match.possibleTypes();
-        for (var i = 0; i < possible.length; i++) {
-          var type = possible[i];
-          if (!match.matchType(type, []).validEnd()) continue;
-          if (type == target) return current.via;
-          if (!type.isLeaf && !type.hasRequiredAttrs && !(type.name in seen)) {
-            active.push({ type: type, via: current.via.concat(type) });
-            seen[type.name] = true;
-          }
-        }
-      }
-    }
-  }, {
-    key: "findWrappingCached",
-    value: function findWrappingCached(target) {
-      var cache = this.schema.cached.wrappings,
-          key = this.name + "-" + target.name;
-      if (key in cache) return cache[key];
-      return cache[key] = this.findWrappingInner(target);
-    }
-  }, {
-    key: "findWrapping",
-    value: function findWrapping(target, pos) {
-      var possible = pos.possibleTypes();
-      if (possible.indexOf(target) > -1) return [];
-      for (var i = 0; i < possible.length; i++) {
-        var rest = possible[i].findWrappingCached(target);
-        if (rest) return [possible[i]].concat(rest);
-      }
     }
   }, {
     key: "computeAttrs",
@@ -9725,7 +9172,10 @@ var NodeType = exports.NodeType = function (_SchemaItem) {
 
   }, {
     key: "fixContent",
-    value: function fixContent(content, attrs) {
+    value: function fixContent() {
+      var content = arguments.length <= 0 || arguments[0] === undefined ? _fragment.Fragment.empty : arguments[0];
+      var attrs = arguments[1];
+
       var before = this.contentExpr.start(attrs).fillBefore(content);
       if (!before) return null;
       content = before.append(content);
@@ -9808,20 +9258,15 @@ var NodeType = exports.NodeType = function (_SchemaItem) {
     get: function get() {
       return this.contentExpr.isLeaf;
     }
-  }, {
-    key: "hasRequiredAttrs",
-    get: function get() {
-      for (var n in this.attrs) {
-        if (this.attrs[n].isRequired) return true;
-      }return false;
-    }
   }], [{
     key: "compile",
     value: function compile(nodes, schema) {
       var result = Object.create(null);
-      for (var name in nodes) {
-        result[name] = new nodes[name].type(name, schema);
-      }if (!result.doc) throw new RangeError("Every schema needs a 'doc' type");
+      nodes.forEach(function (name, spec) {
+        return result[name] = new spec.type(name, schema);
+      });
+
+      if (!result.doc) throw new RangeError("Every schema needs a 'doc' type");
       if (!result.text) throw new RangeError("Every schema needs a 'text' type");
 
       return result;
@@ -9848,32 +9293,15 @@ var Block = exports.Block = function (_NodeType) {
     get: function get() {
       return true;
     }
+  }, {
+    key: "isTextblock",
+    get: function get() {
+      return this.contentExpr.inlineContent;
+    }
   }]);
 
   return Block;
 }(NodeType);
-
-// ;; Base type for textblock node types.
-
-
-var Textblock = exports.Textblock = function (_Block) {
-  _inherits(Textblock, _Block);
-
-  function Textblock() {
-    _classCallCheck(this, Textblock);
-
-    return _possibleConstructorReturn(this, Object.getPrototypeOf(Textblock).apply(this, arguments));
-  }
-
-  _createClass(Textblock, [{
-    key: "isTextblock",
-    get: function get() {
-      return true;
-    }
-  }]);
-
-  return Textblock;
-}(Block);
 
 // ;; Base type for inline node types.
 
@@ -9913,6 +9341,11 @@ var Text = exports.Text = function (_Inline) {
     key: "create",
     value: function create(attrs, content, marks) {
       return new _node.TextNode(this, this.computeAttrs(attrs), content, marks);
+    }
+  }, {
+    key: "toDOM",
+    value: function toDOM(node) {
+      return node.text;
     }
   }, {
     key: "selectable",
@@ -9994,24 +9427,22 @@ var MarkType = exports.MarkType = function (_SchemaItem2) {
     // :: string
     // The name of the mark type.
 
-    var _this6 = _possibleConstructorReturn(this, Object.getPrototypeOf(MarkType).call(this));
+    var _this5 = _possibleConstructorReturn(this, Object.getPrototypeOf(MarkType).call(this));
 
-    _this6.name = name;
-    _this6.freezeAttrs();
-    _this6.rank = rank;
+    _this5.name = name;
+    _this5.freezeAttrs();
+    _this5.rank = rank;
     // :: Schema
     // The schema that this mark type instance is part of.
-    _this6.schema = schema;
-    var defaults = _this6.getDefaultAttrs();
-    _this6.instance = defaults && new _mark.Mark(_this6, defaults);
-    return _this6;
+    _this5.schema = schema;
+    var defaults = _this5.getDefaultAttrs();
+    _this5.instance = defaults && new _mark.Mark(_this5, defaults);
+    return _this5;
   }
 
-  // :: number
-  // Mark type ranks are used to determine the order in which mark
-  // arrays are sorted. (If multiple mark types end up with the same
-  // rank, they still get a fixed order in the schema, but there's no
-  // guarantee what it will be.)
+  // :: bool
+  // Whether this mark should be active when the cursor is positioned
+  // at the end of the mark.
 
 
   _createClass(MarkType, [{
@@ -10051,41 +9482,18 @@ var MarkType = exports.MarkType = function (_SchemaItem2) {
     }
   }, {
     key: "inclusiveRight",
-
-
-    // :: bool
-    // Whether this mark should be active when the cursor is positioned
-    // at the end of the mark.
     get: function get() {
       return true;
     }
   }], [{
-    key: "getOrder",
-    value: function getOrder(marks) {
-      var sorted = [];
-      for (var name in marks) {
-        sorted.push({ name: name, rank: marks[name].rank });
-      }sorted.sort(function (a, b) {
-        return a.rank - b.rank;
-      });
-      var ranks = Object.create(null);
-      for (var i = 0; i < sorted.length; i++) {
-        ranks[sorted[i].name] = i;
-      }return ranks;
-    }
-  }, {
     key: "compile",
     value: function compile(marks, schema) {
-      var order = this.getOrder(marks);
-      var result = Object.create(null);
-      for (var name in marks) {
-        result[name] = new marks[name](name, order[name], schema);
-      }return result;
-    }
-  }, {
-    key: "rank",
-    get: function get() {
-      return 50;
+      var result = Object.create(null),
+          rank = 0;
+      marks.forEach(function (name, markType) {
+        return result[name] = new markType(name, rank++, schema);
+      });
+      return result;
     }
   }]);
 
@@ -10096,17 +9504,26 @@ var MarkType = exports.MarkType = function (_SchemaItem2) {
 // An object describing a schema, as passed to the `Schema`
 // constructor.
 
-// :: Object<{type: constructor<NodeType>, content: ?string}> #path=SchemaSpec.nodes
-// The node types in this schema. Maps names to `NodeType` subclasses,
-// along with an optional content string, as parsed by
-// `ContentExpr.parse`.
+// :: union<Object<NodeSpec>, OrderedMap<NodeSpec>> #path=SchemaSpec.nodes
+// The node types in this schema. Maps names to `NodeSpec` objects
+// describing the node to be associated with that name. Their order is significant
 
-// :: ?Object<[string]> #path=SchemaSpec.groups
-// Specifies the node groups that are used in the schema's content
-// expressions.
-
-// :: ?Object<constructor<MarkType>> #path=SchemaSpec.marks
+// :: ?union<Object<constructor<MarkType>>, OrderedMap<constructor<MarkType>>> #path=SchemaSpec.marks
 // The mark types that exist in this schema.
+
+// ;; #path=NodeSpec #kind=interface
+
+// :: constructor<NodeType> #path=NodeSpec.type
+// The `NodeType` class to be used for this node.
+
+// :: ?string #path=NodeSpec.content
+// The content expression for this node, as parsed by
+// `ContentExpr.parse`. When not given, the node does not allow any
+// content.
+
+// :: ?string #path=NodeSpec.group
+// The group or space-separated groups to which this node belongs, as
+// referred to in the content expressions for the schema.
 
 // ;; Each document is based on a single schema, which provides the
 // node and mark types that it is made up of (which, in turn,
@@ -10120,18 +9537,21 @@ var Schema = function () {
   function Schema(spec) {
     _classCallCheck(this, Schema);
 
-    // :: SchemaSpec The spec that the schema is based on.
-    this.spec = spec;
+    // :: OrderedMap<NodeSpec> The node specs that the schema is based on.
+    this.nodeSpec = _orderedmap.OrderedMap.from(spec.nodes);
+    // :: OrderedMap<constructor<MarkType>> The mark spec that the schema is based on.
+    this.markSpec = _orderedmap.OrderedMap.from(spec.marks);
+
     // :: Object<NodeType>
     // An object mapping the schema's node names to node type objects.
-    this.nodes = NodeType.compile(spec.nodes, this);
+    this.nodes = NodeType.compile(this.nodeSpec, this);
     // :: Object<MarkType>
     // A map from mark names to mark type objects.
-    this.marks = MarkType.compile(spec.marks || {}, this);
+    this.marks = MarkType.compile(this.markSpec, this);
     for (var prop in this.nodes) {
       if (prop in this.marks) throw new RangeError(prop + " can not be both a node and a mark");
       var type = this.nodes[prop];
-      type.contentExpr = _content.ContentExpr.parse(type, spec.nodes[prop].content || "", spec.groups || Object.create(null));
+      type.contentExpr = _content.ContentExpr.parse(type, this.nodeSpec.get(prop).content || "", this.nodeSpec);
     }
 
     // :: Object
@@ -10257,13 +9677,564 @@ var Schema = function () {
 }();
 
 exports.Schema = Schema;
-},{"../util/obj":49,"./content":25,"./fragment":28,"./mark":30,"./node":31}],35:[function(require,module,exports){
+},{"../util/obj":47,"../util/orderedmap":48,"./content":23,"./fragment":25,"./mark":27,"./node":28}],32:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.ReplaceWrapStep = exports.ReplaceStep = exports.RemoveMarkStep = exports.AddMarkStep = exports.Remapping = exports.MapResult = exports.PosMap = exports.canSplit = exports.joinable = exports.joinPoint = exports.canLift = exports.canWrap = exports.StepResult = exports.Step = exports.TransformError = exports.Transform = undefined;
+exports.defaultSchema = exports.CodeMark = exports.LinkMark = exports.StrongMark = exports.EmMark = exports.HardBreak = exports.Image = exports.Paragraph = exports.CodeBlock = exports.Heading = exports.HorizontalRule = exports.ListItem = exports.BulletList = exports.OrderedList = exports.BlockQuote = exports.Doc = exports.Text = undefined;
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _model = require("../model");
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+exports.Text = _model.Text;
+
+// ;; The default top-level document node type.
+
+var Doc = exports.Doc = function (_Block) {
+  _inherits(Doc, _Block);
+
+  function Doc() {
+    _classCallCheck(this, Doc);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(Doc).apply(this, arguments));
+  }
+
+  return Doc;
+}(_model.Block);
+
+// ;; The default blockquote node type.
+
+
+var BlockQuote = exports.BlockQuote = function (_Block2) {
+  _inherits(BlockQuote, _Block2);
+
+  function BlockQuote() {
+    _classCallCheck(this, BlockQuote);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(BlockQuote).apply(this, arguments));
+  }
+
+  _createClass(BlockQuote, [{
+    key: "toDOM",
+    value: function toDOM() {
+      return ["blockquote", 0];
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "blockquote": null };
+    }
+  }]);
+
+  return BlockQuote;
+}(_model.Block);
+
+// ;; The default ordered list node type. Has a single attribute,
+// `order`, which determines the number at which the list starts
+// counting, and defaults to 1.
+
+
+var OrderedList = exports.OrderedList = function (_Block3) {
+  _inherits(OrderedList, _Block3);
+
+  function OrderedList() {
+    _classCallCheck(this, OrderedList);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(OrderedList).apply(this, arguments));
+  }
+
+  _createClass(OrderedList, [{
+    key: "toDOM",
+    value: function toDOM(node) {
+      return ["ol", { start: node.attrs.order == 1 ? null : node.attrs.order }, 0];
+    }
+  }, {
+    key: "attrs",
+    get: function get() {
+      return { order: new _model.Attribute({ default: 1 }) };
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "ol": function ol(dom) {
+          return {
+            order: dom.hasAttribute("start") ? +dom.getAttribute("start") : 1
+          };
+        } };
+    }
+  }]);
+
+  return OrderedList;
+}(_model.Block);
+
+// ;; The default bullet list node type.
+
+
+var BulletList = exports.BulletList = function (_Block4) {
+  _inherits(BulletList, _Block4);
+
+  function BulletList() {
+    _classCallCheck(this, BulletList);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(BulletList).apply(this, arguments));
+  }
+
+  _createClass(BulletList, [{
+    key: "toDOM",
+    value: function toDOM() {
+      return ["ul", 0];
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "ul": null };
+    }
+  }]);
+
+  return BulletList;
+}(_model.Block);
+
+// ;; The default list item node type.
+
+
+var ListItem = exports.ListItem = function (_Block5) {
+  _inherits(ListItem, _Block5);
+
+  function ListItem() {
+    _classCallCheck(this, ListItem);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(ListItem).apply(this, arguments));
+  }
+
+  _createClass(ListItem, [{
+    key: "toDOM",
+    value: function toDOM() {
+      return ["li", 0];
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "li": null };
+    }
+  }]);
+
+  return ListItem;
+}(_model.Block);
+
+// ;; The default horizontal rule node type.
+
+
+var HorizontalRule = exports.HorizontalRule = function (_Block6) {
+  _inherits(HorizontalRule, _Block6);
+
+  function HorizontalRule() {
+    _classCallCheck(this, HorizontalRule);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(HorizontalRule).apply(this, arguments));
+  }
+
+  _createClass(HorizontalRule, [{
+    key: "toDOM",
+    value: function toDOM() {
+      return ["div", ["hr"]];
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "hr": null };
+    }
+  }]);
+
+  return HorizontalRule;
+}(_model.Block);
+
+// ;; The default heading node type. Has a single attribute
+// `level`, which indicates the heading level, and defaults to 1.
+
+
+var Heading = exports.Heading = function (_Block7) {
+  _inherits(Heading, _Block7);
+
+  function Heading() {
+    _classCallCheck(this, Heading);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(Heading).apply(this, arguments));
+  }
+
+  _createClass(Heading, [{
+    key: "toDOM",
+    value: function toDOM(node) {
+      return ["h" + node.attrs.level, 0];
+    }
+  }, {
+    key: "attrs",
+    get: function get() {
+      return { level: new _model.Attribute({ default: 1 }) };
+    }
+    // :: number
+    // Controls the maximum heading level. Has the value 6 in the
+    // `Heading` class, but you can override it in a subclass.
+
+  }, {
+    key: "maxLevel",
+    get: function get() {
+      return 6;
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return {
+        "h1": { level: 1 },
+        "h2": { level: 2 },
+        "h3": { level: 3 },
+        "h4": { level: 4 },
+        "h5": { level: 5 },
+        "h6": { level: 6 }
+      };
+    }
+  }]);
+
+  return Heading;
+}(_model.Block);
+
+// ;; The default code block / listing node type. Only
+// allows unmarked text nodes inside of it.
+
+
+var CodeBlock = exports.CodeBlock = function (_Block8) {
+  _inherits(CodeBlock, _Block8);
+
+  function CodeBlock() {
+    _classCallCheck(this, CodeBlock);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(CodeBlock).apply(this, arguments));
+  }
+
+  _createClass(CodeBlock, [{
+    key: "toDOM",
+    value: function toDOM() {
+      return ["pre", ["code", 0]];
+    }
+  }, {
+    key: "isCode",
+    get: function get() {
+      return true;
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "pre": [null, { preserveWhitespace: true }] };
+    }
+  }]);
+
+  return CodeBlock;
+}(_model.Block);
+
+// ;; The default paragraph node type.
+
+
+var Paragraph = exports.Paragraph = function (_Block9) {
+  _inherits(Paragraph, _Block9);
+
+  function Paragraph() {
+    _classCallCheck(this, Paragraph);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(Paragraph).apply(this, arguments));
+  }
+
+  _createClass(Paragraph, [{
+    key: "toDOM",
+    value: function toDOM() {
+      return ["p", 0];
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "p": null };
+    }
+  }]);
+
+  return Paragraph;
+}(_model.Block);
+
+// ;; The default inline image node type. Has these
+// attributes:
+//
+// - **`src`** (required): The URL of the image.
+// - **`alt`**: The alt text.
+// - **`title`**: The title of the image.
+
+
+var Image = exports.Image = function (_Inline) {
+  _inherits(Image, _Inline);
+
+  function Image() {
+    _classCallCheck(this, Image);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(Image).apply(this, arguments));
+  }
+
+  _createClass(Image, [{
+    key: "toDOM",
+    value: function toDOM(node) {
+      return ["img", node.attrs];
+    }
+  }, {
+    key: "attrs",
+    get: function get() {
+      return {
+        src: new _model.Attribute(),
+        alt: new _model.Attribute({ default: "" }),
+        title: new _model.Attribute({ default: "" })
+      };
+    }
+  }, {
+    key: "draggable",
+    get: function get() {
+      return true;
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "img[src]": function imgSrc(dom) {
+          return {
+            src: dom.getAttribute("src"),
+            title: dom.getAttribute("title"),
+            alt: dom.getAttribute("alt")
+          };
+        } };
+    }
+  }]);
+
+  return Image;
+}(_model.Inline);
+
+// ;; The default hard break node type.
+
+
+var HardBreak = exports.HardBreak = function (_Inline2) {
+  _inherits(HardBreak, _Inline2);
+
+  function HardBreak() {
+    _classCallCheck(this, HardBreak);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(HardBreak).apply(this, arguments));
+  }
+
+  _createClass(HardBreak, [{
+    key: "toDOM",
+    value: function toDOM() {
+      return ["br"];
+    }
+  }, {
+    key: "selectable",
+    get: function get() {
+      return false;
+    }
+  }, {
+    key: "isBR",
+    get: function get() {
+      return true;
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "br": null };
+    }
+  }]);
+
+  return HardBreak;
+}(_model.Inline);
+
+// ;; The default emphasis mark type.
+
+
+var EmMark = exports.EmMark = function (_MarkType) {
+  _inherits(EmMark, _MarkType);
+
+  function EmMark() {
+    _classCallCheck(this, EmMark);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(EmMark).apply(this, arguments));
+  }
+
+  _createClass(EmMark, [{
+    key: "toDOM",
+    value: function toDOM() {
+      return ["em"];
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "i": null, "em": null };
+    }
+  }, {
+    key: "matchDOMStyle",
+    get: function get() {
+      return { "font-style": function fontStyle(value) {
+          return value == "italic" && null;
+        } };
+    }
+  }]);
+
+  return EmMark;
+}(_model.MarkType);
+
+// ;; The default strong mark type.
+
+
+var StrongMark = exports.StrongMark = function (_MarkType2) {
+  _inherits(StrongMark, _MarkType2);
+
+  function StrongMark() {
+    _classCallCheck(this, StrongMark);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(StrongMark).apply(this, arguments));
+  }
+
+  _createClass(StrongMark, [{
+    key: "toDOM",
+    value: function toDOM() {
+      return ["strong"];
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "b": null, "strong": null };
+    }
+  }, {
+    key: "matchDOMStyle",
+    get: function get() {
+      return { "font-weight": function fontWeight(value) {
+          return (/^(bold(er)?|[5-9]\d{2,})$/.test(value) && null
+          );
+        } };
+    }
+  }]);
+
+  return StrongMark;
+}(_model.MarkType);
+
+// ;; The default link mark type. Has these attributes:
+//
+// - **`href`** (required): The link target.
+// - **`title`**: The link's title.
+
+
+var LinkMark = exports.LinkMark = function (_MarkType3) {
+  _inherits(LinkMark, _MarkType3);
+
+  function LinkMark() {
+    _classCallCheck(this, LinkMark);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(LinkMark).apply(this, arguments));
+  }
+
+  _createClass(LinkMark, [{
+    key: "toDOM",
+    value: function toDOM(node) {
+      return ["a", node.attrs];
+    }
+  }, {
+    key: "attrs",
+    get: function get() {
+      return {
+        href: new _model.Attribute(),
+        title: new _model.Attribute({ default: "" })
+      };
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "a[href]": function aHref(dom) {
+          return {
+            href: dom.getAttribute("href"), title: dom.getAttribute("title")
+          };
+        } };
+    }
+  }]);
+
+  return LinkMark;
+}(_model.MarkType);
+
+// ;; The default code font mark type.
+
+
+var CodeMark = exports.CodeMark = function (_MarkType4) {
+  _inherits(CodeMark, _MarkType4);
+
+  function CodeMark() {
+    _classCallCheck(this, CodeMark);
+
+    return _possibleConstructorReturn(this, Object.getPrototypeOf(CodeMark).apply(this, arguments));
+  }
+
+  _createClass(CodeMark, [{
+    key: "toDOM",
+    value: function toDOM() {
+      return ["code"];
+    }
+  }, {
+    key: "isCode",
+    get: function get() {
+      return true;
+    }
+  }, {
+    key: "matchDOMTag",
+    get: function get() {
+      return { "code": null };
+    }
+  }]);
+
+  return CodeMark;
+}(_model.MarkType);
+
+// :: Schema
+// ProseMirror's default document schema.
+
+
+var defaultSchema = exports.defaultSchema = new _model.Schema({
+  nodes: {
+    doc: { type: Doc, content: "block+" },
+
+    paragraph: { type: Paragraph, content: "inline<_>*", group: "block" },
+    blockquote: { type: BlockQuote, content: "block+", group: "block" },
+    ordered_list: { type: OrderedList, content: "list_item+", group: "block" },
+    bullet_list: { type: BulletList, content: "list_item+", group: "block" },
+    horizontal_rule: { type: HorizontalRule, group: "block" },
+    heading: { type: Heading, content: "inline<_>*", group: "block" },
+    code_block: { type: CodeBlock, content: "text*", group: "block" },
+
+    list_item: { type: ListItem, content: "block+" },
+
+    text: { type: _model.Text, group: "inline" },
+    image: { type: Image, group: "inline" },
+    hard_break: { type: HardBreak, group: "inline" }
+  },
+
+  marks: {
+    em: EmMark,
+    strong: StrongMark,
+    link: LinkMark,
+    code: CodeMark
+  }
+});
+},{"../model":26}],33:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.ReplaceAroundStep = exports.ReplaceStep = exports.RemoveMarkStep = exports.AddMarkStep = exports.Remapping = exports.MapResult = exports.PosMap = exports.canSplit = exports.joinable = exports.joinPoint = exports.canLift = exports.canWrap = exports.StepResult = exports.Step = exports.TransformError = exports.Transform = undefined;
 
 var _transform = require("./transform");
 
@@ -10372,17 +10343,17 @@ Object.defineProperty(exports, "ReplaceStep", {
     return _replace_step.ReplaceStep;
   }
 });
-Object.defineProperty(exports, "ReplaceWrapStep", {
+Object.defineProperty(exports, "ReplaceAroundStep", {
   enumerable: true,
   get: function get() {
-    return _replace_step.ReplaceWrapStep;
+    return _replace_step.ReplaceAroundStep;
   }
 });
 
 require("./replace");
 
 require("./mark");
-},{"./map":36,"./mark":37,"./mark_step":38,"./replace":39,"./replace_step":40,"./step":41,"./structure":42,"./transform":43}],36:[function(require,module,exports){
+},{"./map":34,"./mark":35,"./mark_step":36,"./replace":37,"./replace_step":38,"./step":39,"./structure":40,"./transform":41}],34:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -10708,7 +10679,7 @@ function mapThroughResult(mappables, pos, bias) {
   }
   return new MapResult(pos, deleted);
 }
-},{}],37:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 "use strict";
 
 var _model = require("../model");
@@ -10827,7 +10798,7 @@ _transform.Transform.prototype.clearMarkupFor = function (pos, newType, newAttrs
   for (var i = 0, cur = pos + 1; i < node.childCount; i++) {
     var child = node.child(i),
         end = cur + child.nodeSize;
-    var allowed = match.matchType(child.type, []);
+    var allowed = match.matchType(child.type, child.attrs, []);
     if (!allowed) {
       delSteps.push(new _replace_step.ReplaceStep(cur, end, _model.Slice.empty));
     } else {
@@ -10842,7 +10813,7 @@ _transform.Transform.prototype.clearMarkupFor = function (pos, newType, newAttrs
     this.step(delSteps[_i]);
   }return this;
 };
-},{"../model":29,"./mark_step":38,"./replace_step":40,"./transform":43}],38:[function(require,module,exports){
+},{"../model":26,"./mark_step":36,"./replace_step":38,"./transform":41}],36:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -10981,7 +10952,7 @@ var RemoveMarkStep = exports.RemoveMarkStep = function (_Step2) {
 }(_step.Step);
 
 _step.Step.register("removeMark", RemoveMarkStep);
-},{"../model":29,"./step":41}],39:[function(require,module,exports){
+},{"../model":26,"./step":39}],37:[function(require,module,exports){
 "use strict";
 
 var _model = require("../model");
@@ -11018,7 +10989,7 @@ _transform.Transform.prototype.replace = function (from) {
     while (d > 1 && after == $to.end(--d)) {
       ++after;
     }var fittedAfter = fitRight($from, this.doc.resolve(after), fittedLeft);
-    if (fittedAfter) return this.step(new _replace_step.ReplaceWrapStep(from, after, to, $to.end(), fittedAfter, fittedLeft.size));
+    if (fittedAfter) return this.step(new _replace_step.ReplaceAroundStep(from, after, to, $to.end(), fittedAfter, fittedLeft.size));
   }
   return this.step(new _replace_step.ReplaceStep(from, to, fitted));
 };
@@ -11050,32 +11021,30 @@ _transform.Transform.prototype.insertInline = function (pos, node) {
   return this.insert(pos, node.mark(this.doc.marksAt(pos)));
 };
 
-function fitLeftInner($from, depth, placed) {
+function fitLeftInner($from, depth, placed, placedBelow) {
   var content = _model.Fragment.empty,
-      openRight = void 0;
+      openRight = 0,
+      placedHere = placed[depth];
   if ($from.depth > depth) {
-    var inner = fitLeftInner($from, depth + 1, placed);
-    openRight = inner.openRight;
+    var inner = fitLeftInner($from, depth + 1, placed, placedBelow || placedHere);
+    openRight = inner.openRight + 1;
     content = _model.Fragment.from($from.node(depth + 1).copy(inner.content));
-  } else if (placed.length == 0) {
-    openRight = -1;
   }
 
-  var placedHere = placed[depth];
   if (placedHere) {
     content = content.append(placedHere.content);
-    if (placedHere.isEnd) openRight = placedHere.openRight;
-  } else if (openRight == null) {
+    openRight = placedHere.openRight;
+  }
+  if (placedBelow) {
     content = content.append($from.node(depth).contentMatchAt($from.indexAfter(depth)).fillBefore(_model.Fragment.empty, true));
-  } else {
-    openRight++;
+    openRight = 0;
   }
 
   return { content: content, openRight: openRight };
 }
 
 function fitLeft($from, placed) {
-  var _fitLeftInner = fitLeftInner($from, 0, placed);
+  var _fitLeftInner = fitLeftInner($from, 0, placed, false);
 
   var content = _fitLeftInner.content;
   var openRight = _fitLeftInner.openRight;
@@ -11238,18 +11207,20 @@ function placeSlice($from, slice) {
     } else {
       // Outside slice
       curFragment = _model.Fragment.empty;
-      curType = parents[parents.length + dSlice - 1];
+      var parent = parents[parents.length + dSlice - 1];
+      curType = parent.type;
+      curAttrs = parent.attrs;
     }
     if (unplaced) curFragment = curFragment.addToStart(unplaced);
 
     if (curFragment.size == 0 && dSlice <= 0) break;
 
+    // FIXME cut/remove marks when it helps find a placement
     var found = findPlacement(curFragment, $from, dFrom);
     if (found) {
-      if (curFragment.size > 0) placed[found.depth] = {
-        content: found.fill.append(curFragment),
+      if (found.fragment.size > 0) placed[found.depth] = {
+        content: found.fill.append(found.fragment),
         openRight: dSlice > 0 ? 0 : slice.openRight - dSlice,
-        isEnd: dSlice <= 0,
         depth: found.depth
       };
       if (dSlice <= 0) break;
@@ -11258,12 +11229,13 @@ function placeSlice($from, slice) {
     } else {
       if (dSlice == 0) {
         var top = $from.node(0);
-        parents = top.findWrappingAt($from.index(0), curFragment.child(0).type);
+        parents = top.contentMatchAt($from.index(0)).findWrapping(curFragment.firstChild.type, curFragment.firstChild.attrs);
         if (!parents) break;
         var last = parents[parents.length - 1];
-        if (last ? !last.contentExpr.matches(last.defaultAttrs, curFragment) : !top.canReplace($from.indexAfter(0), $from.depth ? $from.index(0) : $from.indexAfter(0), curFragment)) break;
-        parents = [top.type].concat(parents);
-        curType = parents[parents.length - 1];
+        if (last ? !last.type.contentExpr.matches(last.attrs, curFragment) : !top.canReplace($from.indexAfter(0), $from.depth ? $from.index(0) : $from.indexAfter(0), curFragment)) break;
+        parents = [{ type: top.type, attrs: top.attrs }].concat(parents);
+        curType = parents[parents.length - 1].type;
+        curAttrs = parents[parents.length - 1].type;
       }
       curFragment = curType.contentExpr.start(curAttrs).fillBefore(curFragment, true).append(curFragment);
       unplaced = curType.create(curAttrs, curFragment);
@@ -11274,18 +11246,40 @@ function placeSlice($from, slice) {
 }
 
 function findPlacement(fragment, $from, start) {
-  for (var d = start; d >= 0; d--) {
-    var match = $from.node(d).contentMatchAt($from.indexAfter(d)).fillBefore(fragment);
-    if (match) return { depth: d, fill: match };
+  var hasMarks = false;
+  for (var i = 0; i < fragment.childCount; i++) {
+    if (fragment.child(i).marks.length) hasMarks = true;
+  }for (var d = start; d >= 0; d--) {
+    var startMatch = $from.node(d).contentMatchAt($from.indexAfter(d));
+    var match = startMatch.fillBefore(fragment);
+    if (match) return { depth: d, fill: match, fragment: fragment };
+    if (hasMarks) {
+      var stripped = matchStrippingMarks(startMatch, fragment);
+      if (stripped) return { depth: d, fill: _model.Fragment.empty, fragment: stripped };
+    }
   }
 }
-},{"../model":29,"./replace_step":40,"./transform":43}],40:[function(require,module,exports){
+
+function matchStrippingMarks(match, fragment) {
+  var newNodes = [];
+  for (var i = 0; i < fragment.childCount; i++) {
+    var node = fragment.child(i),
+        stripped = node.mark(node.marks.filter(function (m) {
+      return match.allowsMark(m.type);
+    }));
+    match = match.matchNode(stripped);
+    if (!match) return null;
+    newNodes.push(stripped);
+  }
+  return _model.Fragment.from(newNodes);
+}
+},{"../model":26,"./replace_step":38,"./transform":41}],38:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.ReplaceWrapStep = exports.ReplaceStep = undefined;
+exports.ReplaceAroundStep = exports.ReplaceStep = undefined;
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
@@ -11367,8 +11361,8 @@ _step.Step.register("replace", ReplaceStep);
 // preserve a range of the replaced content by moving it into the
 // slice.
 
-var ReplaceWrapStep = exports.ReplaceWrapStep = function (_Step2) {
-  _inherits(ReplaceWrapStep, _Step2);
+var ReplaceAroundStep = exports.ReplaceAroundStep = function (_Step2) {
+  _inherits(ReplaceAroundStep, _Step2);
 
   // :: (number, number, number, number, Slice, number, bool)
   // Create a replace-wrap step with the given range and gap. `inset`
@@ -11376,10 +11370,10 @@ var ReplaceWrapStep = exports.ReplaceWrapStep = function (_Step2) {
   // moved. `structure` has the same meaning as it has in the
   // `Replace` step.
 
-  function ReplaceWrapStep(from, to, gapFrom, gapTo, slice, insert, structure) {
-    _classCallCheck(this, ReplaceWrapStep);
+  function ReplaceAroundStep(from, to, gapFrom, gapTo, slice, insert, structure) {
+    _classCallCheck(this, ReplaceAroundStep);
 
-    var _this2 = _possibleConstructorReturn(this, Object.getPrototypeOf(ReplaceWrapStep).call(this));
+    var _this2 = _possibleConstructorReturn(this, Object.getPrototypeOf(ReplaceAroundStep).call(this));
 
     _this2.from = from;
     _this2.to = to;
@@ -11391,7 +11385,7 @@ var ReplaceWrapStep = exports.ReplaceWrapStep = function (_Step2) {
     return _this2;
   }
 
-  _createClass(ReplaceWrapStep, [{
+  _createClass(ReplaceAroundStep, [{
     key: "apply",
     value: function apply(doc) {
       if (this.structure && (contentBetween(doc, this.from, this.gapFrom) || contentBetween(doc, this.gapTo, this.to))) return _step.StepResult.fail("Structure gap-replace would overwrite content");
@@ -11411,7 +11405,7 @@ var ReplaceWrapStep = exports.ReplaceWrapStep = function (_Step2) {
     key: "invert",
     value: function invert(doc) {
       var gap = this.gapTo - this.gapFrom;
-      return new ReplaceWrapStep(this.from, this.from + this.slice.size + gap, this.from + this.insert, this.from + this.insert + gap, doc.slice(this.from, this.to).removeBetween(this.gapFrom - this.from, this.gapTo - this.from), this.gapFrom - this.from, this.structure);
+      return new ReplaceAroundStep(this.from, this.from + this.slice.size + gap, this.from + this.insert, this.from + this.insert + gap, doc.slice(this.from, this.to).removeBetween(this.gapFrom - this.from, this.gapTo - this.from), this.gapFrom - this.from, this.structure);
     }
   }, {
     key: "map",
@@ -11421,19 +11415,19 @@ var ReplaceWrapStep = exports.ReplaceWrapStep = function (_Step2) {
       var gapFrom = mapping.map(this.gapFrom, -1),
           gapTo = mapping.map(this.gapTo, 1);
       if (from.deleted && to.deleted || gapFrom < from.pos || gapTo > to.pos) return null;
-      return new ReplaceWrapStep(from.pos, to.pos, gapFrom, gapTo, this.slice, this.insert, this.structure);
+      return new ReplaceAroundStep(from.pos, to.pos, gapFrom, gapTo, this.slice, this.insert, this.structure);
     }
   }], [{
     key: "fromJSON",
     value: function fromJSON(schema, json) {
-      return new ReplaceWrapStep(json.from, json.to, json.gapFrom, json.gapTo, _model.Slice.fromJSON(schema, json.slice), json.insert, json.structure);
+      return new ReplaceAroundStep(json.from, json.to, json.gapFrom, json.gapTo, _model.Slice.fromJSON(schema, json.slice), json.insert, json.structure);
     }
   }]);
 
-  return ReplaceWrapStep;
+  return ReplaceAroundStep;
 }(_step.Step);
 
-_step.Step.register("replaceWrap", ReplaceWrapStep);
+_step.Step.register("replaceAround", ReplaceAroundStep);
 
 function contentBetween(doc, from, to) {
   var $from = doc.resolve(from),
@@ -11453,7 +11447,7 @@ function contentBetween(doc, from, to) {
   }
   return false;
 }
-},{"../model":29,"./map":36,"./step":41}],41:[function(require,module,exports){
+},{"../model":26,"./map":34,"./step":39}],39:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -11632,7 +11626,7 @@ var StepResult = exports.StepResult = function () {
 
   return StepResult;
 }();
-},{"../model":29,"./map":36}],42:[function(require,module,exports){
+},{"../model":26,"./map":34}],40:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -11726,6 +11720,17 @@ _transform.Transform.prototype.lift = function (from) {
   var unwrap = liftable.unwrap;
 
 
+  if (unwrap) {
+    var parent = $from.node(shared),
+        pos = $to.after(shared + 1);
+    for (var i = $to.indexAfter(shared); pos > from; i--) {
+      var size = parent.child(i - 1).nodeSize;
+      this.lift(pos - size + 1, pos - 1, silent);
+      pos -= size;
+    }
+    return this;
+  }
+
   var gapStart = $from.before(shared + 1),
       gapEnd = $to.after(shared + 1);
   var start = gapStart,
@@ -11751,22 +11756,7 @@ _transform.Transform.prototype.lift = function (from) {
     } else {
       end++;
     }
-  }if (unwrap) {
-    var joinPos = gapStart,
-        parent = $from.node(shared);
-    for (var i = $from.index(shared), e = $to.index(shared) + 1, first = true; i < e; i++, first = false) {
-      if (!first) {
-        this.join(joinPos);
-        end -= 2;
-        gapEnd -= 2;
-      }
-      joinPos += parent.child(i).nodeSize - (first ? 0 : 2);
-    }
-    ++gapStart;
-    --gapEnd;
-  }
-
-  return this.step(new _replace_step.ReplaceWrapStep(start, end, gapStart, gapEnd, new _model.Slice(before.append(after), beforeDepth, afterDepth), before.size - beforeDepth, true));
+  }return this.step(new _replace_step.ReplaceAroundStep(start, end, gapStart, gapEnd, new _model.Slice(before.append(after), beforeDepth, afterDepth), before.size - beforeDepth, true));
 };
 
 // :: (Node, number, ?number, NodeType, ?Object) → bool
@@ -11779,11 +11769,20 @@ function canWrap(doc, from, to, type, attrs) {
 function checkWrap($from, $to, type, attrs) {
   var shared = rangeDepth($from, $to);
   if (shared == null) return null;
-  var parent = $from.node(shared);
-  var around = parent.findWrappingAt($from.index(shared), type);
-  if (!around || !parent.canReplaceWith($from.index(shared), $to.indexAfter(shared), around[0] || type)) return null;
-  var inside = type.findWrapping(parent.child($from.index(shared)).type, type.contentExpr.start(attrs || type.defaultAttrs));
-  if (around && inside) return { shared: shared, around: around, inside: inside };
+  var parent = $from.node(shared),
+      parentFrom = $from.index(shared),
+      parentTo = $to.indexAfter(shared);
+  var around = parent.contentMatchAt(parentFrom).findWrapping(type, attrs);
+  if (!around) return null;
+  if (!parent.canReplaceWith(parentFrom, parentTo, around.length ? around[0].type : type, around.length ? around[0].attrs : attrs)) return null;
+  var inner = parent.child(parentFrom);
+  var inside = type.contentExpr.start(attrs || type.defaultAttrs).findWrapping(inner.type, inner.attrs);
+  if (!inside) return null;
+  var lastInside = inside[inside.length - 1];
+  var innerMatch = (lastInside ? lastInside.type : type).contentExpr.start(lastInside ? lastInside.attrs : attrs);
+  for (var i = parentFrom; i < parentTo; i++) {
+    if (!(innerMatch = innerMatch.matchNode(parent.child(i)))) return null;
+  }return { shared: shared, around: around, inside: inside };
 }
 
 // :: (number, ?number, NodeType, ?Object) → Transform
@@ -11807,13 +11806,13 @@ _transform.Transform.prototype.wrap = function (from) {
   var content = _model.Fragment.empty,
       open = inside.length + 1 + around.length;
   for (var i = inside.length - 1; i >= 0; i--) {
-    content = _model.Fragment.from(inside[i].create(null, content));
+    content = _model.Fragment.from(inside[i].type.create(inside[i].attrs, content));
   }content = _model.Fragment.from(type.create(wrapAttrs, content));
   for (var _i = around.length - 1; _i >= 0; _i--) {
-    content = _model.Fragment.from(around[_i].create(null, content));
+    content = _model.Fragment.from(around[_i].type.create(around[_i].attrs, content));
   }var start = $from.before(shared + 1),
       end = $to.after(shared + 1);
-  this.step(new _replace_step.ReplaceWrapStep(start, end, start, end, new _model.Slice(content, 0, 0), open, true));
+  this.step(new _replace_step.ReplaceAroundStep(start, end, start, end, new _model.Slice(content, 0, 0), open, true));
 
   if (inside.length) {
     var splitPos = start + open,
@@ -11845,7 +11844,7 @@ _transform.Transform.prototype.setBlockType = function (from) {
       _this.clearMarkupFor(_this.map(pos, 1, mapFrom), type, attrs);
       var startM = _this.map(pos, 1, mapFrom),
           endM = _this.map(pos + node.nodeSize, 1, mapFrom);
-      _this.step(new _replace_step.ReplaceWrapStep(startM, endM, startM + 1, endM - 1, new _model.Slice(_model.Fragment.from(type.create(attrs)), 0, 0), 1, true));
+      _this.step(new _replace_step.ReplaceAroundStep(startM, endM, startM + 1, endM - 1, new _model.Slice(_model.Fragment.from(type.create(attrs)), 0, 0), 1, true));
       return false;
     }
   });
@@ -11862,14 +11861,15 @@ _transform.Transform.prototype.setNodeType = function (pos, type, attrs) {
 
   if (!type.validContent(node.content, attrs)) throw new RangeError("Invalid content for node type " + type.name);
 
-  return this.step(new _replace_step.ReplaceWrapStep(pos, pos + node.nodeSize, pos + 1, pos + node.nodeSize - 1, new _model.Slice(_model.Fragment.from(type.create(attrs)), 0, 0), 1, true));
+  return this.step(new _replace_step.ReplaceAroundStep(pos, pos + node.nodeSize, pos + 1, pos + node.nodeSize - 1, new _model.Slice(_model.Fragment.from(type.create(attrs)), 0, 0), 1, true));
 };
 
-// :: (Node, number, ?NodeType) → bool
+// :: (Node, number, ?NodeType, ?Object) → bool
 // Check whether splitting at the given position is allowed.
 function canSplit(doc, pos) {
   var depth = arguments.length <= 2 || arguments[2] === undefined ? 1 : arguments[2];
   var typeAfter = arguments[3];
+  var attrsAfter = arguments[4];
 
   var $pos = doc.resolve(pos),
       base = $pos.depth - depth;
@@ -11877,11 +11877,11 @@ function canSplit(doc, pos) {
   for (var d = $pos.depth - 1; d > base; d--) {
     var node = $pos.node(d),
         _index2 = $pos.index(d);
-    if (!node.canReplace(0, _index2) || !node.canReplaceWith(_index2, node.childCount, typeAfter || $pos.node(d + 1).type)) return false;
+    if (!node.canReplace(0, _index2) || !node.canReplaceWith(_index2, node.childCount, typeAfter || $pos.node(d + 1).type, typeAfter ? attrsAfter : $pos.node(d + 1).attrs)) return false;
     typeAfter = null;
   }
   var index = $pos.indexAfter(base);
-  return $pos.node(base).canReplaceWith(index, index, typeAfter || $pos.node(base + 1).type);
+  return $pos.node(base).canReplaceWith(index, index, typeAfter || $pos.node(base + 1).type, typeAfter ? attrsAfter : $pos.node(base + 1).attrs);
 }
 
 // :: (number, ?number, ?NodeType, ?Object) → Transform
@@ -11958,7 +11958,7 @@ _transform.Transform.prototype.join = function (pos) {
   if (silent) this.maybeStep(step);else this.step(step);
   return this;
 };
-},{"../model":29,"./replace_step":40,"./transform":43}],43:[function(require,module,exports){
+},{"../model":26,"./replace_step":38,"./transform":41}],41:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -12075,7 +12075,7 @@ var Transform = function () {
 }();
 
 exports.Transform = Transform;
-},{"../util/error":46,"./map":36}],44:[function(require,module,exports){
+},{"../util/error":44,"./map":34}],42:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -12193,7 +12193,7 @@ var ParamPrompt = exports.ParamPrompt = function () {
         }
       });
 
-      var input = this.form.querySelector("input, textarea");
+      var input = this.form.elements[0];
       if (input) input.focus();
     }
 
@@ -12377,7 +12377,7 @@ function openPrompt(pm, content, options) {
 }
 
 (0, _dom.insertCSS)("\n.ProseMirror-prompt {\n  background: white;\n  padding: 2px 6px 2px 15px;\n  border: 1px solid silver;\n  position: absolute;\n  border-radius: 3px;\n  z-index: 11;\n}\n\n.ProseMirror-prompt h5 {\n  margin: 0;\n  font-weight: normal;\n  font-size: 100%;\n  color: #444;\n}\n\n.ProseMirror-prompt input[type=\"text\"],\n.ProseMirror-prompt textarea {\n  background: #eee;\n  border: none;\n  outline: none;\n}\n\n.ProseMirror-prompt input[type=\"text\"] {\n  padding: 0 4px;\n}\n\n.ProseMirror-prompt-close {\n  position: absolute;\n  left: 2px; top: 1px;\n  color: #666;\n  border: none; background: transparent; padding: 0;\n}\n\n.ProseMirror-prompt-close:after {\n  content: \"✕\";\n  font-size: 12px;\n}\n\n.ProseMirror-invalid {\n  background: #ffc;\n  border: 1px solid #cc7;\n  border-radius: 4px;\n  padding: 5px 10px;\n  position: absolute;\n  min-width: 10em;\n}\n\n.ProseMirror-prompt-buttons {\n  margin-top: 5px;\n  display: none;\n}\n\n");
-},{"../dom":1}],45:[function(require,module,exports){
+},{"../dom":1}],43:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -12406,7 +12406,7 @@ function compareDeep(a, b) {
   }
   return true;
 }
-},{}],46:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -12437,7 +12437,7 @@ function functionName(f) {
   var match = /^function (\w+)/.exec(f.toString());
   return match && match[1];
 }
-},{}],47:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -12559,7 +12559,7 @@ function eventMixin(ctor) {
     if (methods.hasOwnProperty(prop)) proto[prop] = methods[prop];
   }
 }
-},{}],48:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -12615,7 +12615,7 @@ var Map = exports.Map = window.Map || function () {
 
   return _class;
 }();
-},{}],49:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -12628,7 +12628,177 @@ function copyObj(obj, base) {
     copy[prop] = obj[prop];
   }return copy;
 }
-},{}],50:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+// ;; Persistent data structure representing an ordered mapping from
+// strings to values, with some convenient update methods.
+
+var OrderedMap = exports.OrderedMap = function () {
+  function OrderedMap(content) {
+    _classCallCheck(this, OrderedMap);
+
+    this.content = content;
+  }
+
+  _createClass(OrderedMap, [{
+    key: "find",
+    value: function find(key) {
+      for (var i = 0; i < this.content.length; i += 2) {
+        if (this.content[i] == key) return i;
+      }return -1;
+    }
+
+    // :: (string) → ?any
+    // Retrieve the value stored under `key`, or return undefined when
+    // no such key exists.
+
+  }, {
+    key: "get",
+    value: function get(key) {
+      var found = this.find(key);
+      return found == -1 ? undefined : this.content[found + 1];
+    }
+
+    // :: (string, any, ?string) → OrderedMap
+    // Create a new map by replacing the value of `key` with a new
+    // value, or adding a binding to the end of the map. If `newKey` is
+    // given, the key of the binding will be replaced with that key.
+
+  }, {
+    key: "update",
+    value: function update(key, value, newKey) {
+      var self = newKey && newKey != key ? this.remove(newKey) : this;
+      var found = self.find(key),
+          content = self.content.slice();
+      if (found == -1) {
+        content.push(newKey || key, value);
+      } else {
+        content[found + 1] = value;
+        if (newKey) content[found] = newKey;
+      }
+      return new OrderedMap(content);
+    }
+
+    // :: (string) → OrderedMap
+    // Return a map with the given key removed, if it existed.
+
+  }, {
+    key: "remove",
+    value: function remove(key) {
+      var found = this.find(key);
+      if (found == -1) return this;
+      var content = this.content.slice();
+      content.splice(found, 2);
+      return new OrderedMap(content);
+    }
+
+    // :: (string, any) → OrderedMap
+    // Add a new key to the start of the map.
+
+  }, {
+    key: "addToStart",
+    value: function addToStart(key, value) {
+      return new OrderedMap([key, value].concat(this.remove(key).content));
+    }
+
+    // :: (string, any) → OrderedMap
+    // Add a new key to the end of the map.
+
+  }, {
+    key: "addToEnd",
+    value: function addToEnd(key, value) {
+      var content = this.remove(key).content.slice();
+      content.push(key, value);
+      return new OrderedMap(content);
+    }
+
+    // :: ((key: string, value: any))
+    // Call the given function for each key/value pair in the map, in
+    // order.
+
+  }, {
+    key: "forEach",
+    value: function forEach(f) {
+      for (var i = 0; i < this.content.length; i += 2) {
+        f(this.content[i], this.content[i + 1]);
+      }
+    }
+
+    // :: (union<Object, OrderedMap>) → OrderedMap
+    // Create a new map by prepending the keys in this map that don't
+    // appear in `map` before the keys in `map`.
+
+  }, {
+    key: "prepend",
+    value: function prepend(map) {
+      if (!map.size) return this;
+      map = OrderedMap.from(map);
+      return new OrderedMap(map.content.concat(this.subtract(map).content));
+    }
+
+    // :: (union<Object, OrderedMap>) → OrderedMap
+    // Create a new map by appending the keys in this map that don't
+    // appear in `map` after the keys in `map`.
+
+  }, {
+    key: "append",
+    value: function append(map) {
+      if (!map.size) return this;
+      map = OrderedMap.from(map);
+      return new OrderedMap(this.subtract(map).content.concat(map.content));
+    }
+
+    // :: (union<Object, OrderedMap>) → OrderedMap
+    // Create a map containing all the keys in this map that don't
+    // appear in `map`.
+
+  }, {
+    key: "subtract",
+    value: function subtract(map) {
+      var result = this;
+      OrderedMap.from(map).forEach(function (key) {
+        return result = result.remove(key);
+      });
+      return result;
+    }
+
+    // :: number
+    // The amount of keys in this map.
+
+  }, {
+    key: "size",
+    get: function get() {
+      return this.content.length >> 1;
+    }
+
+    // :: (?union<Object, OrderedMap>) → OrderedMap
+    // Return a map with the given content. If null, create an empty
+    // map. If given an ordered map, return that map itself. If given an
+    // object, create a map from the object's properties.
+
+  }], [{
+    key: "from",
+    value: function from(value) {
+      if (value instanceof OrderedMap) return value;
+      var content = [];
+      if (value) for (var prop in value) {
+        content.push(prop, value[prop]);
+      }return new OrderedMap(content);
+    }
+  }]);
+
+  return OrderedMap;
+}();
+},{}],49:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -12641,7 +12811,7 @@ function sortedInsert(array, elt, compare) {
     if (compare(array[i], elt) > 0) break;
   }array.splice(i, 0, elt);
 }
-},{}],51:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 (function(mod) {
   if (typeof exports == "object" && typeof module == "object") // CommonJS
     module.exports = mod()
@@ -12813,11 +12983,11 @@ function sortedInsert(array, elt, compare) {
   return Keymap
 })
 
-},{}],52:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 "use strict";
 
 var _edit = require("prosemirror/dist/edit");
 
 var pm = new _edit.ProseMirror({ place: someElement });
 
-},{"prosemirror/dist/edit":11}]},{},[52]);
+},{"prosemirror/dist/edit":11}]},{},[51]);
