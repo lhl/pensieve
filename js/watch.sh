@@ -1,2 +1,2 @@
 #!/bin/sh
-watchify test.js -o test_bundle.js &
+watchify editor.js -o ../server/static/editor_bundle.js &
