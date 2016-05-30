@@ -2,13 +2,17 @@
 
 {% block body %}
 <input id="title" value="{{ title }}">
-<div id="content">
-{{{ content }}}
-</div>
+<div id="editor"></div>
 
+<div id="content"></div>
+
+<!--
 <input id="defocus">
 <button id="new">New Page</button>
+-->
+<script src="/static/editor_bundle.js"></script>
 <script>
+/*
 var lastsave = 0;
 var page = {{{ page }}};
 var pages = {{{ pages }}};
@@ -111,5 +115,6 @@ function save(force) {
     lastsave = now;
   }
 }
+*/
 </script>
 {% end %}
