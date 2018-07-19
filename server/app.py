@@ -48,6 +48,7 @@ class Pensieve(tornado.web.Application):
 
     handlers = [
       (r'/', HomeHandler),
+      (r'/content', SaveHandler),
 
       (r'/page(/?.*)', PageHandler),
 
@@ -109,6 +110,20 @@ class HomeHandler(BaseHandler):
       self.redirect('/page/%s' % self.application.page)
     else:
       self.redirect('/page')
+
+
+class SaveHandler(BaseHandler):
+  def get(self):
+    dest = os.path.join(os.path.dirname(__file__), 'save.json')
+    content = open(dest, 'r').read()
+    self.set_header('Content-Type', 'application/json')
+    self.write(content)
+  def post(self):
+    content = self.get_argument('content', None)
+    if content != None:
+      dest = os.path.join(os.path.dirname(__file__), 'save.json')
+      open(dest, 'w').write(content)
+
 
 
 class PageHandler(BaseHandler):
