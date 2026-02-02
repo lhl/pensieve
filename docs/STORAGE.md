@@ -1,14 +1,16 @@
+# Storage
+
 * versioning
 * diff
 
 
-sync + git
+## sync + git
 http://blog.bittorrent.com/2013/12/17/sync-hacks-how-to-use-git-with-bittorrent-sync/
 http://jetheis.com/blog/2013/02/17/using-dropbox-as-a-private-github/
 http://stackoverflow.com/questions/1960799/using-git-and-dropbox-together-effectively
 
 
-git-based syncing
+## git-based syncing
 https://www.mayrhofer.eu.org/dvcs-autosync
 https://gitorious.org/dvcs-autosync
 https://github.com/crackleware/git-auto-sync

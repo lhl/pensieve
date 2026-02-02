@@ -1,11 +1,10 @@
-Real-time Editing
-Table
+# Real-time Editing
 
+## Table
 
-
-Hackpad
+### Hackpad
 http://hackpad.com/
----
+
 + Really Easy to Type
 + Good Styling
 + Editor does some neat stuff
@@ -17,20 +16,19 @@ http://hackpad.com/
 https://hackpad.com/mwN5#Hackpad-Improvement-Requests
 
 
-Scribbleton
+### Scribbleton
 http://scribbleton.com/
 
 
-XWiki
+### XWiki
 
-Google Sites
+### Google Sites
 
-TiddlyWiki5
+### TiddlyWiki5
 http://tiddlywiki.com/
 https://github.com/Jermolene/TiddlyWiki5
 
 
-Discussion
----
+## Discussion
 http://ask.metafilter.com/241492/Whats-the-best-easy-web-based-wikicollective-note-software-out-there
 http://www.wikimatrix.org/

@@ -1,21 +1,23 @@
-Router
+# Framework
+
+## Router
 https://github.com/browserstate/history.js/
 https://github.com/flatiron/director
 https://github.com/defunkt/jquery-pjax
 
-Mithril: Lightweight Framework
+## Mithril: Lightweight Framework
 http://lhorie.github.io/mithril/
 http://lhorie.github.io/mithril/getting-started.html
 
-React - Mutability / Shadow DOM
+## React - Mutability / Shadow DOM
 http://facebook.github.io/react/
 http://facebook.github.io/react/docs/flux-overview.html
 
 ---
 
-AngularJS - Framework
+## AngularJS - Framework
 https://angularjs.org
 
 
-Polymer - Web Components
+## Polymer - Web Components
 http://www.polymer-project.org

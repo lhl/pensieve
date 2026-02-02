@@ -1,22 +1,30 @@
-# Install for cmdline dev
-# https://github.com/rogerwang/node-webkit
-sudo npm install –g nodewebkit
+# Node
 
-# yeoman 
-# https://github.com/Dica-Developer/generator-node-webkit
+## Install for cmdline dev
+https://github.com/rogerwang/node-webkit
+```bash
+sudo npm install –g nodewebkit
+```
+
+## yeoman
+https://github.com/Dica-Developer/generator-node-webkit
+```bash
 sudo npm install -g generator-node-webkit
 yo node-webkit
+```
 
-# Distribute
+## Distribute
+```bash
 grunt dist-mac
+```
 
 http://yeoman.io/learning/index.html
 
 
-# Using Routes
+## Using Routes
 http://scotch.io/tutorials/javascript/learn-to-use-the-new-router-in-expressjs-4
 
-# Templates w/ Handlebars
+## Templates w/ Handlebars
 https://github.com/ericf/express-handlebars
 https://github.com/ericf/express-handlebars/blob/master/examples/advanced/server.js
 
@@ -24,20 +32,20 @@ See also: http://mozilla.github.io/nunjucks/
 
 
 
-# File reading - callback hell
+## File reading - callback hell
 http://stackoverflow.com/questions/23680121/node-js-with-fs-readfile-not-able-to-render-file-content-via-http
 http://stackoverflow.com/questions/22863170/node-js-from-fs-readfilesync-to-fs-readfile
 
 
 
-# Generators
+## Generators
 http://wingolog.org/archives/2013/05/08/generators-in-v8
 http://jlongster.com/A-Study-on-Solving-Callbacks-with-JavaScript-Generators
 http://howtonode.org/generators-vs-fibers
 http://blog.alexmaccaw.com/how-yield-will-transform-node
 
 
-# Nodewebkit
+## Nodewebkit
 https://github.com/chagel/gmail-ssb
 https://github.com/user4815162342/nw-ssb
 
@@ -47,8 +55,7 @@ http://modernweb.com/2014/02/10/build-desktop-apps-with-javascript-and-node-webk
 http://code.tutsplus.com/tutorials/introduction-to-html5-desktop-apps-with-node-webkit--net-36296
 
 
-SEARCH
----
+## Search
 leveldb
 https://github.com/fergiemcdowall/forage
 https://github.com/fergiemcdowall/search-index

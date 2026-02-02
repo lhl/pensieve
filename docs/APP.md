@@ -1,31 +1,29 @@
-Alternatives
----
-
+# Alternatives
 
 Compile node as a single executable?
 https://github.com/crcn/nexe
 Run in node-webkit
 
 
-node-webkit
+## node-webkit
 https://github.com/rogerwang/node-webkit
 + most active
 - packaging/structure is... weird
 
 
-atom-shell
+## atom-shell
 https://github.com/atom/atom-shell
 * vs node-webkit: https://github.com/atom/atom-shell/blob/master/docs/development/atom-shell-vs-node-webkit.md
 
 
-appjs
+## appjs
 http://appjs.com/
 https://github.com/appjs/appjs
 - not super active: https://github.com/appjs/appjs/issues/393
 - see https://github.com/sihorton/appjs-deskshell
 
 
-TideSDK
+## TideSDK
 http://www.tidesdk.org/
 https://github.com/TideSDK/TideSDK
 + can use Python
@@ -33,7 +31,7 @@ https://github.com/TideSDK/TideSDK
 - see: https://www.tidekit.com/
 
 
-Brackets Shell
+## Brackets Shell
 https://github.com/adobe/brackets-shell/
 http://clintberry.com/2013/html5-desktop-apps-with-brackets-shell/
 http://clintberry.com/2013/native-desktop-javascript/
@@ -41,7 +39,7 @@ http://clintberry.com/2013/native-desktop-javascript/
 - focused on use by Brackets
 
 
-CEF
+## CEF
 https://code.google.com/p/chromiumembedded/
 https://code.google.com/p/cefpython/
 

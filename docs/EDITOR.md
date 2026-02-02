@@ -1,3 +1,5 @@
+# Editor
+
 v1: Use Froala
 
 v2: Switch to medium-editor
@@ -8,8 +10,7 @@ v2: Switch to medium-editor
 * integrate pen markdown conversion: https://github.com/sofish/pen/tree/master/src
 
 
-Features Desired
-===
+## Features Desired
 * Inline HTML editing
   * H2
   * H3
@@ -25,12 +26,11 @@ Features Desired
 * Floating Menu
 
 
-Top Contenders
-===
+## Top Contenders
 
-Froala Editor
+### Froala Editor
 http://editor.froala.com
-https://github.com/froala/wysiwyg-editor 
+https://github.com/froala/wysiwyg-editor
 + Great floating mode
 + Good table editor
 + Image uploads
@@ -38,14 +38,14 @@ https://github.com/froala/wysiwyg-editor
 - Non-commercial license
 - no public support, users http://stackoverflow.com/questions/tagged/froala
 
-Redactor
+### Redactor
 http://imperavi.com/redactor/
 x Air Mode (floating) doesn't include most features
 x Licensing is weird/really expensive
 + Great table editor
 + Great docs/API http://imperavi.com/redactor/docs/
 
-Aloha Editor
+### Aloha Editor
 http://aloha-editor.org
 + Pretty good table editing
 * OK floating mode
@@ -53,37 +53,36 @@ http://aloha-editor.org
 - sorta ugly
 + GPLv2 license
 
-CKEditor
+### CKEditor
 http://ckeditor.com
 https://github.com/ckeditor/ckeditor-dev
 * v4 has a floating mode
 - ugly
 + GPL/LGPL/MPL license
 
-Raptor
+### Raptor
 https://www.raptor-editor.com/
 x No floating bar
 - sort of heavy
 + GPLv3 license
 
 
-Interesting
-===
+## Interesting
 
-ZenPen
+### ZenPen
 http://www.zenpen.io
 https://github.com/tholman/zenpen
 + Awesome full screen/dark mode design
 + beautiful inline toolbar
 
-Medium Editor Clone
+### Medium Editor Clone
 http://daviferreira.github.io/medium-editor/
 https://github.com/daviferreira/medium-editor
 https://stillhart.biz/project/MediumButton/
 https://github.com/timdown/rangy
 http://orthes.github.io/medium-editor-insert-plugin/
 
-Medium Editor + Markdown
+### Medium Editor + Markdown
 https://github.com/sofish/pen
 
 https://github.com/jakiestfu/Medium.js/
@@ -93,22 +92,20 @@ https://github.com/mduvall/grande.js
 https://github.com/raphaelcruzeiro/jquery-notebook
 
 
-Sir Trevor
+### Sir Trevor
 http://madebymany.github.io/sir-trevor-js/
 + Interesting "post" type sections
 
 
-Grids
-===
+## Grids
 Maybe instead of inline tables, allow a separate grid element...
 
 http://handsontable.com/
 
 
-Other
-===
+## Other
 
-Snap Editor
+### Snap Editor
 http://www.snapeditor.com/
 https://github.com/tonibergholm/SnapEditor
 + Pretty good!
@@ -117,31 +114,29 @@ https://github.com/tonibergholm/SnapEditor
 - company out of business
 - Never to be done: http://www.snapeditor.com/whats_coming
 
-Quill
+### Quill
 http://quilljs.com/
 x no tables
 - company out of business
 
-Mercury Editor
+### Mercury Editor
 http://jejacks0n.github.io/mercury/
 x table editing is wack
 - heavy
 - not floating
 - attached to Rails
 
-Trumbowyg
+### Trumbowyg
 http://alex-d.github.io/Trumbowyg/
 x no tables
 
 
-Reference
-===
+## Reference
 https://news.layervault.com/stories/5739-a-better-looking-rich-text-entry-method-than-tinymce-or-ckeditor-as-seen-on-medium-with-available-solutions-to-use
 http://bashooka.com/coding/best-wysiwyg-editors/
 
 
-Collaborative Editing
-===
+## Collaborative Editing
 http://www.codecommit.com/blog/java/understanding-and-applying-operational-transformation
 https://github.com/ottypes/docs
 https://github.com/share/ShareJS/issues/1

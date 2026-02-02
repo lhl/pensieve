@@ -1,10 +1,10 @@
-===
-M1: Basic Notebook
-===
+# TODO
+
+## M1: Basic Notebook
 
 Use Prosemirror for Editing Page
 
-ADD NAV:
+### ADD NAV
 * pick a tree view
 * tree view into repo
 * Add to Nav on new page creation
@@ -15,23 +15,21 @@ CONGRATS WE HAVE A WORKING WIKI
 Notes can now go here
 
 
-===
-M2: Basic Publishing
-===
+## M2: Basic Publishing
 
-GIT CHECKINS
+### GIT CHECKINS
 * INIT: node-git initialize
 * SAVE: git-commit
 * PULL/PUSH: webworker?
 
 ---
 
-BASIC AUTH/LOGIN
+### BASIC AUTH/LOGIN
 * http://passportjs.org/
 
 ---
 
-WEB ENABLE
+### WEB ENABLE
 Move Infrastructure to ExpressJS/PJAX (so it can run in browser)
 
 main.html - run express
@@ -62,11 +60,9 @@ CONGRATS WE HAVE A PUBLIC WIKI
 Everything is public!
 
 
-===
-M3: Better Editing
-===
+## M3: Better Editing
 
-MEDIUM-EDITOR
+### MEDIUM-EDITOR
 * switch to medium editor
 * add plugins
 * add image block insertion
@@ -74,25 +70,25 @@ MEDIUM-EDITOR
 
 ---
 
-KEYBOARD SHORTCUTS
+### KEYBOARD SHORTCUTS
 * Cut and Paste
 * https://github.com/rogerwang/node-webkit/wiki/Shortcut
 * VIM basic nav
 
 ---
 
-IMAGE UPLOADS
+### IMAGE UPLOADS
 * hook up the server-side for file uploads
 * check into repository
 
 ---
 
-MARKDOWN
+### MARKDOWN
 * Import sophie/pen stuff
 
 ---
 
-BETTER INSERT
+### BETTER INSERT
 https://userstyles.org/styles/102262/twily-s-powerline-firefox-css
 https://github.com/bling/vim-airline
 * key commands
@@ -100,13 +96,13 @@ https://github.com/bling/vim-airline
 
 ---
 
-INSERT DATAGRID
+### INSERT DATAGRID
 handsontable
 
 
 ---
 
-DRAG N DROP UPLOAD
+### DRAG N DROP UPLOAD
 http://www.dropzonejs.com
 * Save files
 
@@ -115,27 +111,25 @@ http://www.dropzonejs.com
 CONGRATS WE HAVE A BEST IN BREED INLINE EDITOR
 
 
-===
-M3: Better Publishing
-===
+## M3: Better Publishing
 
-SEARCH
+### SEARCH
 * Figure out what engine to use
 
 ---
 
-AUTOCOMPLETE/SEARCH FRONT-END
-* Typeahead 
+### AUTOCOMPLETE/SEARCH FRONT-END
+* Typeahead
 
 ---
 
-TAGS
+### TAGS
 * Tag library
 * Attach metadata
 
 ---
 
-PRIVATE
+### PRIVATE
 * metadata
 * json filters based on user
 
@@ -144,9 +138,7 @@ PRIVATE
 CONGRATS WE HAVE A USEFUL REPOSITORY
 
 
-===
-FUTURE
-===
+## FUTURE
 * Internal Wiki Linking
   * Show Related Pages
 * Show Edit History, Revisions w/ Intelligent Diff
@@ -157,8 +149,7 @@ FUTURE
 * Encryption/Locked Notes
 
 
-ORG
----
+## ORG
 users.json
 settings.json
 /images
@@ -166,7 +157,6 @@ settings.json
 
 ---
 
-INIT:
+### INIT
 * set repository
 * create folder
-
